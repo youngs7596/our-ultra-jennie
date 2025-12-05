@@ -1,6 +1,35 @@
-# services/price-monitor/main.py
-# Version: v3.5
-# Price Monitor Service - Flask 엔트리포인트
+"""
+services/price-monitor/main.py - 실시간 가격 모니터링 서비스
+=========================================================
+
+이 서비스는 보유 종목의 가격을 실시간 모니터링하여 매도 신호를 발생시킵니다.
+
+매도 조건:
+---------
+1. 목표가 도달 (PROFIT_TARGET)
+2. 손절가 도달 (STOP_LOSS)
+3. RSI 과매수 (RSI > 70/75/78)
+4. 보유 기간 초과 (TIME_EXIT)
+5. ATR 기반 트레일링 스탑
+
+처리 흐름:
+---------
+1. Scheduler에서 주기적 트리거
+2. 보유 종목(PORTFOLIO) 조회
+3. 각 종목 현재가 조회 (KIS Gateway)
+4. 매도 조건 충족 시 sell-orders 큐로 발행
+
+출력:
+----
+RabbitMQ sell-orders 큐로 매도 신호 발행
+
+환경변수:
+--------
+- PORT: HTTP 서버 포트 (기본: 8088)
+- TRADING_MODE: REAL/MOCK
+- RABBITMQ_URL: RabbitMQ 연결 URL
+- KIS_GATEWAY_URL: KIS Gateway URL
+"""
 
 import os
 import sys

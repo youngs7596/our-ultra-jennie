@@ -1,6 +1,36 @@
-# services/buy-executor/main.py
-# Version: v3.5
-# Buy Executor Service - Flask 엔트리포인트
+"""
+services/buy-executor/main.py - 매수 실행 서비스
+===============================================
+
+이 서비스는 매수 신호를 받아 실제 주문을 실행합니다.
+
+주요 기능:
+---------
+1. RabbitMQ에서 매수 신호 수신 (buy-signals 큐)
+2. LLM 점수 확인 및 포지션 사이징
+3. KIS Gateway를 통한 매수 주문 실행
+4. 텔레그램 알림 발송
+5. 거래 로그 기록 (TRADELOG)
+
+입력 (RabbitMQ 메시지):
+--------------------
+{
+    "stock_code": "005930",
+    "stock_name": "삼성전자",
+    "signal_type": "RSI_OVERSOLD",
+    "llm_score": 75,
+    "price": 70000
+}
+
+환경변수:
+--------
+- PORT: HTTP 서버 포트 (기본: 8082)
+- TRADING_MODE: REAL/MOCK
+- DRY_RUN: true면 실제 주문 미실행
+- MIN_LLM_SCORE: 매수 최소 점수 (Real: 70, Mock: 50)
+- RABBITMQ_URL: RabbitMQ 연결 URL
+- KIS_GATEWAY_URL: KIS Gateway URL
+"""
 
 import os
 import sys

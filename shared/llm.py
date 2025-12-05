@@ -1,5 +1,51 @@
-# youngs75_jennie/llm.py
-# [모듈] LLM을 이용한 의사결정 로직을 담당합니다.
+"""
+shared/llm.py - Ultra Jennie LLM 오케스트레이션 모듈
+=====================================================
+
+이 모듈은 멀티 LLM 기반 투자 의사결정 엔진을 제공합니다.
+
+핵심 구성요소:
+-------------
+1. BaseLLMProvider: LLM 프로바이더 추상 베이스 클래스
+2. GeminiLLMProvider: Google Gemini API 구현 (Scout 단계)
+3. ClaudeLLMProvider: Anthropic Claude API 구현 (Hunter 단계)  
+4. OpenAILLMProvider: OpenAI GPT API 구현 (Judge 단계)
+5. JennieBrain: 멀티 LLM 오케스트레이션 메인 클래스
+
+의사결정 파이프라인:
+------------------
+1. Scout (Gemini): 정량 데이터 기반 1차 스크리닝
+2. Hunter (Claude): 심층 펀더멘털 분석 + 경쟁사 수혜 분석
+3. Debate: Bull vs Bear AI 토론 (선택적)
+4. Judge (OpenAI): 최종 승인/거부 판단
+
+사용 예시:
+---------
+>>> from shared.llm import JennieBrain
+>>> brain = JennieBrain()
+>>> 
+>>> # 종목 분석 (하이브리드 스코어링)
+>>> result = brain.get_jennies_analysis_score_v5(decision_info, quant_context)
+>>> print(f"Score: {result['score']}, Grade: {result['grade']}")
+>>>
+>>> # 뉴스 감성 분석
+>>> sentiment = brain.analyze_news_sentiment(title, summary)
+
+JSON 응답 스키마:
+----------------
+- RESPONSE_SCHEMA: 기본 의사결정 (decision, reason, quantity)
+- ANALYSIS_RESPONSE_SCHEMA: 점수 분석 (score, grade, reason)
+- SENTIMENT_RESPONSE_SCHEMA: 감성 분석 (score, reason)
+
+환경변수:
+--------
+- SECRET_ID_GEMINI_API_KEY: Gemini API 키 시크릿 ID
+- SECRET_ID_OPENAI_API_KEY: OpenAI API 키 시크릿 ID  
+- SECRET_ID_CLAUDE_API_KEY: Claude API 키 시크릿 ID
+- LLM_MODEL_NAME: Gemini 모델명 (기본: gemini-2.5-pro)
+- OPENAI_MODEL_NAME: OpenAI 모델명 (기본: gpt-4o-mini)
+- CLAUDE_MODEL_NAME: Claude 모델명 (기본: claude-sonnet-4-20250514)
+"""
 
 import logging
 import json

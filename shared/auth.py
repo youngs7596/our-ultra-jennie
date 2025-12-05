@@ -1,5 +1,41 @@
-# youngs75_jennie/auth.py
-# [모듈] 로컬 secrets.json / 환경 변수 기반 Secret 로더
+"""
+shared/auth.py - Ultra Jennie 인증 및 시크릿 관리 모듈
+====================================================
+
+이 모듈은 secrets.json 파일 및 환경 변수에서 시크릿을 로드합니다.
+
+시크릿 조회 우선순위:
+-------------------
+1. secrets.json 파일 (SECRETS_FILE 환경변수로 경로 지정)
+2. 환경 변수 직접 조회
+
+주요 함수:
+---------
+- get_secret(secret_id): 시크릿 값 조회 (캐시 지원)
+- clear_secret_cache(): 캐시 초기화
+
+지원하는 시크릿 키:
+-----------------
+- gemini-api-key: Google Gemini API 키
+- openai-api-key: OpenAI API 키
+- claude-api-key: Anthropic Claude API 키
+- kis-r-app-key / kis-r-app-secret: KIS 실계좌 API
+- kis-v-app-key / kis-v-app-secret: KIS 가상계좌 API
+- telegram-bot-token / telegram-chat-id: 텔레그램 알림
+- mariadb-user / mariadb-password: MariaDB 자격증명
+
+사용 예시:
+---------
+>>> from shared.auth import get_secret
+>>>
+>>> api_key = get_secret('gemini-api-key')
+>>> if api_key:
+...     print("API 키 로드 성공")
+
+환경변수:
+--------
+- SECRETS_FILE: secrets.json 파일 경로 (기본: /app/config/secrets.json)
+"""
 
 import json
 import logging

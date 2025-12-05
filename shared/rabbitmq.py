@@ -1,12 +1,44 @@
-# shared/rabbitmq.py
-# Version: v3.8
-# 작업 LLM: Claude Opus 4.5
 """
-[v3.8] RabbitMQ 연결 복구 로직 강화
-- StreamLostError 예외 처리 추가
-- 연결 끊김 시 자동 재연결
-- heartbeat 설정으로 연결 유지
+shared/rabbitmq.py - Ultra Jennie RabbitMQ 클라이언트 모듈
+========================================================
+
+이 모듈은 마이크로서비스 간 비동기 메시지 통신을 담당합니다.
+
+핵심 클래스:
+----------
+1. RabbitMQPublisher: 메시지 발행 (지연 전송 지원)
+2. RabbitMQConsumer: 메시지 수신 (자동 재연결)
+
+주요 큐:
+-------
+- buy-signals: 매수 신호 (buy-scanner → buy-executor)
+- sell-orders: 매도 신호 (price-monitor → sell-executor)
+- mock.jobs.*: Mock 모드 전용 큐
+
+지연 전송 기능:
+-------------
+Dead Letter Exchange를 활용한 지연 메시지 지원.
+예: 15분 후 재시도, 1시간 후 알림 등
+
+사용 예시:
+---------
+>>> from shared.rabbitmq import RabbitMQPublisher, RabbitMQConsumer
+>>>
+>>> # 메시지 발행
+>>> publisher = RabbitMQPublisher(amqp_url, 'buy-signals')
+>>> publisher.publish({'stock_code': '005930', 'signal': 'RSI_OVERSOLD'})
+>>>
+>>> # 메시지 수신
+>>> def handler(message):
+...     print(f"Received: {message}")
+>>> consumer = RabbitMQConsumer(amqp_url, 'buy-signals', handler)
+>>> consumer.start()
+
+환경변수:
+--------
+- RABBITMQ_URL: RabbitMQ 연결 URL (기본: amqp://guest:guest@localhost:5672/)
 """
+
 import json
 import logging
 import threading

@@ -1,11 +1,36 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-# services/kis-gateway/main.py
-# Version: v3.5
 """
-KIS Gateway Service - Refactored with Flask-Limiter + pybreaker
-KIS API 호출을 중앙화하여 Rate Limiting, Circuit Breaker 제공
+services/kis-gateway/main.py - 한국투자증권 API 게이트웨이
+========================================================
+
+이 서비스는 KIS Open API 호출을 중앙화하여 관리합니다.
+
+주요 기능:
+---------
+1. API 토큰 관리: 자동 발급 및 갱신
+2. Rate Limiting: Flask-Limiter (초당 10회)
+3. Circuit Breaker: pybreaker (연속 실패 시 차단)
+4. 요청 프록시: 모든 KIS API 호출 중계
+
+API 엔드포인트:
+-------------
+- GET /health: 헬스 체크
+- GET /api/token: 토큰 발급
+- POST /api/order/buy: 매수 주문
+- POST /api/order/sell: 매도 주문
+- GET /api/stock/{code}: 종목 정보
+- POST /api/market-data/snapshot: 현재가 조회
+- GET /api/balance: 잔고 조회
+
+Circuit Breaker 설정:
+-------------------
+- fail_max: 5 (연속 5회 실패 시 차단)
+- reset_timeout: 60 (60초 후 재시도)
+
+환경변수:
+--------
+- PORT: HTTP 서버 포트 (기본: 8080)
+- TRADING_MODE: REAL/MOCK
+- SECRETS_FILE: secrets.json 경로
 """
 
 import os

@@ -1,6 +1,35 @@
-# youngs75_jennie/market_regime.py
-# Version: v3.5
-# 시장 상황(Market Regime) 분석 및 전략 선택 모듈
+"""
+shared/market_regime.py - Ultra Jennie 시장 국면 분석 모듈
+=======================================================
+
+이 모듈은 KOSPI 지수를 기반으로 시장 국면을 분석합니다.
+
+시장 국면 분류:
+-------------
+- STRONG_BULL: 급등장 (MA20 대비 +5% 이상)
+- BULL: 상승장 (MA20 대비 +2% 이상)
+- SIDEWAYS: 횡보장 (MA20 대비 ±2%)
+- BEAR: 하락장 (MA20 대비 -2% 이하)
+
+국면별 전략:
+----------
+- STRONG_BULL: 추세 추종 (Trend Following)
+- BULL: 추세 추종 + 평균 회귀 혼합
+- SIDEWAYS: 평균 회귀 (Mean Reversion)
+- BEAR: 방어적 전략 (Iron Shield)
+
+사용 예시:
+---------
+>>> from shared.market_regime import MarketRegimeDetector, StrategySelector
+>>>
+>>> detector = MarketRegimeDetector()
+>>> regime, context = detector.detect_regime(kospi_df, current_price)
+>>> print(f"현재 시장: {regime}")
+>>>
+>>> selector = StrategySelector()
+>>> strategies = selector.select_strategies(regime)
+>>> print(f"추천 전략: {strategies}")
+"""
 
 import logging
 import pandas as pd

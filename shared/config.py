@@ -1,6 +1,41 @@
-# youngs75_jennie/config.py
-# Version: v3.5
-# [모듈] 중앙화된 설정 관리 클래스
+"""
+shared/config.py - Ultra Jennie 설정 관리 모듈
+=============================================
+
+이 모듈은 중앙화된 설정 관리를 담당합니다.
+
+설정값 우선순위:
+--------------
+1. 메모리 캐시 (런타임 변경값)
+2. DB CONFIG 테이블 (동적 설정)
+3. 환경 변수
+4. 기본값 (하드코딩)
+
+주요 설정 카테고리:
+-----------------
+1. 매수 관련: RSI 기준, 볼린저밴드, 골든크로스 등
+2. 매도 관련: 익절/손절 비율, RSI 과매수 구간
+3. 포지션 관리: 최대 보유 종목, 섹터/종목별 비중 제한
+4. 시장 국면: Bull/Bear/Sideways별 전략 파라미터
+
+사용 예시:
+---------
+>>> from shared.config import ConfigManager
+>>>
+>>> config = ConfigManager()
+>>> scan_interval = config.get('SCAN_INTERVAL_SEC', default=600)
+>>> rsi_threshold = config.get('BUY_RSI_OVERSOLD_THRESHOLD', default=30)
+
+주요 설정 키:
+-----------
+- SCAN_INTERVAL_SEC: 스캔 간격 (초)
+- BUY_RSI_OVERSOLD_THRESHOLD: 과매도 RSI 기준 (기본: 30)
+- MAX_HOLDING_STOCKS: 최대 보유 종목 수
+- PROFIT_TARGET_FULL: 전량 익절 목표 (%)
+- SELL_STOP_LOSS_PCT: 손절 기준 (%)
+- MAX_SECTOR_PCT: 섹터별 최대 비중 (%)
+- MAX_STOCK_PCT: 종목별 최대 비중 (%)
+"""
 
 import os
 import logging

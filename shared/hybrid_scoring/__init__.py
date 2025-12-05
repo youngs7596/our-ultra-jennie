@@ -1,49 +1,46 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Scout v5.1 Hybrid Scoring System
+shared/hybrid_scoring - Ultra Jennie 하이브리드 스코어링 시스템
+=============================================================
 
-세 가지 설계(Claude, Gemini, GPT)의 장점을 통합한 하이브리드 채점 시스템.
+이 패키지는 정량적 팩터 분석과 LLM 정성 분석을 결합한 
+하이브리드 스코어링 시스템을 제공합니다.
 
 핵심 철학:
-- "감(LLM)을 믿기 전에, 통계(Data)로 검증하고, 비용(Cost)을 통제한다."
-- 정량 점수는 LLM과 독립적으로 계산하여 검증 가능성 확보
-- LLM에게 통계 컨텍스트를 제공하여 데이터 기반 판단 유도
+---------
+"AI의 감(LLM)을 믿기 전에, 통계(Data)로 검증하고, 비용(Cost)을 통제한다."
+
+- 정량 점수: LLM 독립적으로 계산 (비용 $0, 검증 가능)
+- 하이브리드: 정량 60% + LLM 정성 40% 결합
+- 팩터 분석: 주간 배치로 IC/IR 통계 업데이트
 
 구성 모듈:
-- quant_scorer: 정량 점수 계산 엔진 (LLM 독립, 비용 0원)
-- hybrid_scorer: 정량+정성 하이브리드 점수 결합
-- factor_analyzer: 오프라인 팩터 분석 배치 작업
-- competitor_analyzer: 경쟁사 수혜 분석 (v5.1 신규)
-- schema: DB 테이블 스키마 정의
+---------
+1. quant_scorer: 정량 점수 계산 엔진
+   - 모멘텀, 가치, 품질, 기술적, 수급 점수
+   
+2. hybrid_scorer: 하이브리드 점수 결합
+   - 정량 + LLM 점수 가중 결합
+   
+3. factor_analyzer: 팩터 분석 배치
+   - IC (Information Coefficient)
+   - IR (Information Ratio)
+   - 조건부 승률 분석
+   
+4. competitor_analyzer: 경쟁사 수혜 분석
+   - 경쟁사 악재 시 반사이익 분석
+   - 섹터별 디커플링 통계
 
-사용법:
-```python
-from shared.hybrid_scoring import QuantScorer, HybridScorer, FactorAnalyzer, CompetitorAnalyzer
-
-# 1. 정량 점수 계산
-quant_scorer = QuantScorer(db_conn, market_regime='BULL')
-quant_result = quant_scorer.calculate_total_quant_score(
-    stock_code='005930',
-    stock_name='삼성전자',
-    daily_prices_df=df,
-    ...
-)
-
-# 2. 하이브리드 점수 결합
-hybrid_scorer = HybridScorer(market_regime='BULL')
-hybrid_result = hybrid_scorer.calculate_hybrid_score(quant_result, llm_score=75)
-
-# 3. 오프라인 팩터 분석 (주간 배치)
-analyzer = FactorAnalyzer(db_conn)
-analyzer.run_full_analysis()
-
-# 4. 경쟁사 수혜 분석 (v5.1 신규)
-comp_analyzer = CompetitorAnalyzer()
-report = comp_analyzer.analyze('035420')  # NAVER
-if report.has_opportunity:
-    print(f"경쟁사 수혜 기회! 점수: +{report.total_benefit_score}")
-```
+사용 예시:
+---------
+>>> from shared.hybrid_scoring import QuantScorer, HybridScorer
+>>>
+>>> # 정량 점수 계산
+>>> scorer = QuantScorer(db_conn, market_regime='BULL')
+>>> result = scorer.calculate_total_quant_score(stock_code='005930', ...)
+>>>
+>>> # 하이브리드 점수 결합
+>>> hybrid = HybridScorer(market_regime='BULL')
+>>> final = hybrid.calculate_hybrid_score(result, llm_score=75)
 """
 
 from .quant_scorer import QuantScorer, QuantScoreResult, format_quant_score_for_prompt
@@ -90,5 +87,5 @@ __all__ = [
     'get_all_sectors',  # v5.1 신규
 ]
 
-__version__ = '5.1.0'
+__version__ = '1.0.0'
 

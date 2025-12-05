@@ -2,14 +2,14 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-5.1.1-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11-green)
 ![Docker](https://img.shields.io/badge/docker-compose-2496ED)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
 **멀티 LLM 기반 한국 주식 자율 트레이딩 시스템**
 
-*"감(LLM)을 믿기 전에, 통계(Data)로 검증하고, 비용(Cost)을 통제한다."*
+*"AI가 발굴하고, 통계가 검증하고, 사람이 결정한다."*
 
 </div>
 
@@ -33,18 +33,20 @@
 
 ## 🎯 개요
 
-**Ultra Jennie**는 한국투자증권 API를 활용한 AI 기반 자율 트레이딩 에이전트입니다. 멀티 LLM(Gemini, Claude, OpenAI)을 활용하여 투자 판단을 내리고, 하이브리드 스코어링 시스템으로 정량적/정성적 분석을 결합합니다.
+**Ultra Jennie**는 한국투자증권 Open API를 활용한 AI 기반 자율 트레이딩 에이전트입니다.
+
+3개의 LLM(Gemini, Claude, OpenAI)을 활용한 멀티 에이전트 시스템으로, 정량적 팩터 분석과 LLM 정성 분석을 결합한 **하이브리드 스코어링**으로 투자 판단을 내립니다.
 
 ### 주요 특징
 
 | 기능 | 설명 |
 |------|------|
-| 🧠 **멀티 LLM 판단** | Gemini(Scout), Claude(Hunter), OpenAI(Judge) 3단계 LLM 심사 |
+| 🧠 **멀티 LLM 판단** | Gemini(Scout) → Claude(Hunter) → OpenAI(Judge) 3단계 심사 |
 | 📊 **하이브리드 스코어링** | 정량 팩터(60%) + LLM 정성 분석(40%) 결합 |
 | 🎯 **경쟁사 수혜 분석** | 경쟁사 악재 발생 시 반사이익 자동 포착 |
-| 📰 **실시간 뉴스 분석** | RAG 기반 뉴스 감성 분석 및 카테고리 분류 |
-| ⚖️ **페어 트레이딩** | 롱/숏 페어 신호 자동 생성 |
-| 📈 **백테스트** | 디커플링 전략 통계 검증 |
+| 📰 **실시간 뉴스 분석** | 뉴스 감성 분석 및 카테고리 자동 분류 |
+| 🔄 **마이크로서비스 아키텍처** | Docker Compose 기반 10개 서비스 |
+| 📱 **텔레그램 알림** | 매수/매도 체결 실시간 알림 |
 
 ---
 
@@ -64,7 +66,7 @@ KOSPI 200 Universe
    - 통과 기준: 60점 이상
        ↓
 [Phase 3] Debate (Bull vs Bear)
-   - 낙관론자/비관론자 토론
+   - 낙관론자/비관론자 AI 토론
        ↓
 [Phase 4] Judge Decision (OpenAI)
    - 최종 승인 기준: 75점 이상
@@ -72,52 +74,39 @@ KOSPI 200 Universe
 Watchlist (상위 15개)
 ```
 
-### 2. 경쟁사 수혜 분석 시스템
+### 2. 매수/매도 파이프라인
+
+```
+[Buy Scanner] → [Buy Executor] → [Price Monitor] → [Sell Executor]
+      ↓               ↓                ↓                ↓
+ Watchlist 스캔   포지션 사이징      실시간 감시      익절/손절 실행
+ 기술적 신호 탐지  분산 투자 적용    목표가/손절가    RabbitMQ 연동
+```
+
+### 3. 경쟁사 수혜 분석 시스템
 
 ```python
-# 쿠팡 개인정보 유출 시나리오
 from shared.hybrid_scoring import CompetitorAnalyzer
 
 analyzer = CompetitorAnalyzer()
 report = analyzer.analyze('035420')  # NAVER
 
-# 결과
+# 결과 예시
 # - 섹터: 이커머스
-# - 경쟁사 이벤트: 보안사고
+# - 경쟁사 이벤트: 쿠팡 보안사고
 # - 수혜 점수: +10점
 # - 디커플링 승률: 62%
-# - 추천: 매수 검토
 ```
 
-### 3. 뉴스 카테고리 자동 분류
+### 4. 뉴스 카테고리 자동 분류
 
-| 카테고리 | 키워드 | 심각도 | 경쟁사 수혜 |
-|----------|--------|--------|-------------|
+| 카테고리 | 키워드 | 피해 점수 | 경쟁사 수혜 |
+|----------|--------|----------|-------------|
 | 보안사고 | 해킹, 유출, 개인정보 | -15점 | +10점 |
 | 서비스장애 | 장애, 먹통, 접속불가 | -10점 | +8점 |
 | 리콜 | 리콜, 결함, 불량 | -12점 | +7점 |
 | 오너리스크 | 구속, 기소, 횡령 | -12점 | +3점 |
 | 규제 | 과징금, 제재, 공정위 | -8점 | +5점 |
-
-### 4. 페어 트레이딩 전략
-
-```python
-from shared.strategies import PairTradingStrategy
-
-strategy = PairTradingStrategy()
-signal = strategy.generate_pair_signal({
-    'affected_code': 'CPNG',
-    'affected_company': '쿠팡',
-    'event_type': '보안사고',
-    'severity': -15
-})
-
-# 결과
-# 롱: NAVER (035420)
-# 숏: 쿠팡 (CPNG)
-# 디커플링 승률: 62%
-# 예상 스프레드: +10.3%
-```
 
 ---
 
@@ -130,13 +119,13 @@ signal = strategy.generate_pair_signal({
 │                                                                         │
 │  ┌───────────────┐    ┌───────────────┐    ┌───────────────┐           │
 │  │  News Crawler │───▶│   ChromaDB    │◀───│  Scout Job    │           │
-│  │   (v9.1)      │    │   (RAG)       │    │   (v5.1)      │           │
+│  │               │    │   (RAG)       │    │               │           │
 │  └───────────────┘    └───────────────┘    └───────────────┘           │
 │         │                                          │                    │
 │         ▼                                          ▼                    │
 │  ┌───────────────┐    ┌───────────────┐    ┌───────────────┐           │
 │  │    Redis      │◀───│  KIS Gateway  │───▶│  Buy Scanner  │           │
-│  │   (Cache)     │    │   (v3.0)      │    │   (v3.5)      │           │
+│  │   (Cache)     │    │               │    │               │           │
 │  └───────────────┘    └───────────────┘    └───────────────┘           │
 │         │                    │                     │                    │
 │         ▼                    ▼                     ▼                    │
@@ -152,7 +141,7 @@ signal = strategy.generate_pair_signal({
 │                       └───────────────┘    └───────────────┘           │
 │                                                                         │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  Dashboard V2 (React + FastAPI) │ Grafana      │
+│  Dashboard (React + FastAPI)  │  Grafana (Monitoring)  │  Telegram     │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -160,26 +149,28 @@ signal = strategy.generate_pair_signal({
 
 ## 📦 서비스 구성
 
+### 핵심 서비스
+
 | 서비스 | 포트 | 설명 |
 |--------|------|------|
-| **kis-gateway** | 8080 | 한국투자증권 API 게이트웨이 |
+| **kis-gateway** | 8080 | 한국투자증권 API 게이트웨이, 토큰 관리 |
 | **scout-job** | 8087 | AI 기반 종목 발굴 파이프라인 |
-| **buy-scanner** | 8081 | 매수 신호 스캔 |
-| **buy-executor** | 8082 | 매수 주문 실행 |
-| **sell-executor** | 8083 | 매도 주문 실행 |
-| **price-monitor** | 8088 | 실시간 가격 모니터링 |
-| **news-crawler** | 8089 | 뉴스 수집 및 경쟁사 수혜 분석 |
+| **buy-scanner** | 8081 | 매수 신호 스캔 (RSI, 볼린저밴드, 돌파) |
+| **buy-executor** | 8082 | 매수 주문 실행, 포지션 사이징 |
+| **sell-executor** | 8083 | 매도 주문 실행, 익절/손절 |
+| **price-monitor** | 8088 | 실시간 가격 모니터링, 매도 신호 발생 |
+| **news-crawler** | 8089 | 뉴스 수집 및 감성 분석 |
 | **daily-briefing** | 8086 | 일간 브리핑 생성 |
-| **scheduler-service** | 8095 | 작업 스케줄링 |
+| **scheduler-service** | 8095 | 작업 스케줄링 (APScheduler) |
 | **dashboard-v2** | 80, 8090 | React + FastAPI 대시보드 |
 
 ### 인프라 서비스
 
 | 서비스 | 포트 | 설명 |
 |--------|------|------|
-| **chromadb** | 8000 | 벡터 DB (RAG) |
-| **redis** | 6379 | 캐시 및 실시간 데이터 |
-| **rabbitmq** | 5672, 15672 | 메시지 큐 |
+| **chromadb** | 8000 | 벡터 DB (뉴스 RAG) |
+| **redis** | 6379 | 캐시 및 실시간 상태 |
+| **rabbitmq** | 5672, 15672 | 메시지 큐 (서비스 간 통신) |
 | **grafana** | 3000 | 모니터링 대시보드 |
 | **loki** | 3100 | 로그 집계 |
 
@@ -197,7 +188,6 @@ signal = strategy.generate_pair_signal({
 - **Google Gemini** - 1차 스크리닝 (Scout)
 - **Anthropic Claude** - 2차 심층 분석 (Hunter)
 - **OpenAI GPT** - 최종 판단 (Judge)
-- **LangChain** - LLM 오케스트레이션
 - **ChromaDB** - 벡터 저장소 (RAG)
 
 ### Data
@@ -213,7 +203,7 @@ signal = strategy.generate_pair_signal({
 - **Grafana / Loki** - 모니터링
 
 ### Frontend
-- **React + TypeScript** - Dashboard V2
+- **React + TypeScript** - Dashboard
 - **Vite** - 빌드 도구
 
 ---
@@ -223,14 +213,14 @@ signal = strategy.generate_pair_signal({
 ### 사전 요구사항
 
 - Docker & Docker Compose
-- MariaDB (WSL2 mirrored mode 또는 별도 서버)
+- MariaDB (WSL2 또는 별도 서버)
 - Python 3.11+
 
 ### 1. 환경 설정
 
-```bash
+     ```bash
 # 저장소 클론
-git clone https://github.com/yourusername/my-ultra-jennie.git
+git clone https://github.com/youngs7596/my-ultra-jennie.git
 cd my-ultra-jennie
 
 # 시크릿 파일 생성
@@ -264,7 +254,7 @@ cp secrets.example.json secrets.json
 
 ### 3. 서비스 실행
 
-```bash
+     ```bash
 # Real 모드 (실제 거래)
 docker compose --profile real up -d
 
@@ -305,14 +295,18 @@ my-ultra-jennie/
 ├── shared/                      # 공유 모듈
 │   ├── llm.py                  # LLM 오케스트레이션 (JennieBrain)
 │   ├── database.py             # 데이터베이스 유틸리티
-│   ├── news_classifier.py      # 뉴스 카테고리 분류
+│   ├── auth.py                 # 인증 및 시크릿 로더
+│   ├── config.py               # 설정 관리자
+│   ├── rabbitmq.py             # RabbitMQ 클라이언트
+│   ├── notification.py         # 텔레그램 알림
 │   ├── market_regime.py        # 시장 국면 분석
+│   ├── news_classifier.py      # 뉴스 카테고리 분류
 │   ├── db/                     # SQLAlchemy 모델
 │   │   ├── models.py           # ORM 모델 정의
 │   │   └── connection.py       # DB 연결 관리
 │   ├── hybrid_scoring/         # 하이브리드 스코어링
-│   │   ├── quant_scorer.py     # 정량 점수
-│   │   ├── hybrid_scorer.py    # 하이브리드 점수
+│   │   ├── quant_scorer.py     # 정량 점수 계산
+│   │   ├── hybrid_scorer.py    # 하이브리드 점수 결합
 │   │   ├── factor_analyzer.py  # 팩터 분석
 │   │   └── competitor_analyzer.py  # 경쟁사 수혜 분석
 │   ├── strategies/             # 트레이딩 전략
@@ -323,10 +317,19 @@ my-ultra-jennie/
 │       └── gateway_client.py   # 게이트웨이 클라이언트
 │
 ├── prompts/                     # LLM 프롬프트
-│   └── competitor_benefit_prompt.py  # 경쟁사 수혜 프롬프트
+│   └── competitor_benefit_prompt.py
+│
+├── scripts/                    # 배치 스크립트
+│   ├── weekly_factor_analysis_batch.py  # 주간 팩터 분석
+│   ├── collect_naver_news.py   # 뉴스 수집
+│   ├── collect_dart_filings.py # DART 공시 수집
+│   └── run_factor_analysis.py  # 팩터 분석 실행
+│
+├── configs/                    # 설정 파일
+│   └── gpt_v2_strategy_presets.json  # 전략 프리셋
 │
 ├── infrastructure/             # 인프라 설정
-│   ├── env-vars-wsl.yaml       # WSL2 환경변수
+│   ├── env-vars-wsl.yaml       # WSL2 환경변수 (Real)
 │   └── env-vars-mock.yaml      # Mock 환경변수
 │
 ├── observability/              # 모니터링
@@ -334,12 +337,9 @@ my-ultra-jennie/
 │   ├── loki/                   # Loki 설정
 │   └── promtail/               # Promtail 설정
 │
-├── scripts/                    # 유틸리티 스크립트
-│   ├── init_competitor_data.py # 경쟁사 데이터 초기화
-│   └── run_factor_analysis.py  # 팩터 분석 실행
-│
 ├── docker-compose.yml          # Docker Compose 설정
-└── secrets.json                # API 키 (gitignore)
+├── secrets.json                # API 키 (gitignore)
+└── secrets.example.json        # API 키 템플릿
 ```
 
 ---
@@ -355,7 +355,7 @@ from shared.llm import JennieBrain
 
 brain = JennieBrain()
 
-# 종목 분석
+# 종목 분석 (하이브리드 스코어링)
 result = brain.get_jennies_analysis_score_v5(decision_info, quant_context)
 # Returns: {'score': 75, 'grade': 'B', 'reason': '...'}
 
@@ -363,11 +363,31 @@ result = brain.get_jennies_analysis_score_v5(decision_info, quant_context)
 sentiment = brain.analyze_news_sentiment(title, summary)
 # Returns: {'score': 30, 'reason': '악재로 판단'}
 
-# Debate 세션
+# Debate 세션 (Bull vs Bear)
 debate_log = brain.run_debate_session(decision_info)
 
 # Judge 최종 판단
 judge_result = brain.run_judge_scoring(decision_info, debate_log)
+```
+
+### QuantScorer (shared/hybrid_scoring/quant_scorer.py)
+
+정량적 팩터 점수 계산 엔진.
+
+```python
+from shared.hybrid_scoring import QuantScorer
+
+scorer = QuantScorer(db_conn, market_regime='BULL')
+
+# 종목 점수 계산
+result = scorer.calculate_score(stock_code='005930')
+# Returns: QuantScoreResult(
+#   momentum_score=75.2,
+#   value_score=62.1,
+#   quality_score=80.5,
+#   technical_score=68.3,
+#   final_score=71.5
+# )
 ```
 
 ### CompetitorAnalyzer (shared/hybrid_scoring/competitor_analyzer.py)
@@ -380,15 +400,9 @@ from shared.hybrid_scoring import CompetitorAnalyzer
 analyzer = CompetitorAnalyzer()
 
 # 종목 분석
-report = analyzer.analyze('035420')
+report = analyzer.analyze('035420')  # NAVER
 print(f"수혜 기회: {report.has_opportunity}")
 print(f"수혜 점수: +{report.total_benefit_score}")
-
-# 섹터별 경쟁사 조회
-competitors = analyzer.get_competitors_by_sector('ECOM')
-
-# 디커플링 통계 조회
-stats = analyzer.get_decoupling_stats('ECOM')
 ```
 
 ### NewsClassifier (shared/news_classifier.py)
@@ -407,25 +421,6 @@ print(result.base_score)         # -15
 print(result.competitor_benefit) # +10
 ```
 
-### PairTradingStrategy (shared/strategies/pair_trading.py)
-
-페어 트레이딩 전략 생성.
-
-```python
-from shared.strategies import PairTradingStrategy
-
-strategy = PairTradingStrategy()
-signal = strategy.generate_pair_signal({
-    'affected_code': 'CPNG',
-    'affected_company': '쿠팡',
-    'event_type': '보안사고',
-    'severity': -15
-})
-
-if signal:
-    print(strategy.format_signal_for_display(signal))
-```
-
 ---
 
 ## 🗃 데이터베이스 스키마
@@ -439,23 +434,23 @@ if signal:
 | `TRADELOG` | 거래 이력 |
 | `NEWS_SENTIMENT` | 뉴스 감성 분석 결과 |
 | `STOCK_DAILY_PRICES_3Y` | 3년 일봉 데이터 |
-
-### 경쟁사 수혜 분석 테이블
-
-| 테이블 | 설명 |
-|--------|------|
-| `INDUSTRY_COMPETITORS` | 산업/경쟁사 매핑 (7개 섹터, 15개 종목) |
-| `EVENT_IMPACT_RULES` | 이벤트 영향 규칙 (5개 유형) |
-| `SECTOR_RELATION_STATS` | 섹터 디커플링 통계 |
-| `COMPETITOR_BENEFIT_EVENTS` | 실시간 수혜 이벤트 기록 |
+| `STOCK_MASTER` | 종목 마스터 (코드, 이름, 섹터) |
 
 ### 하이브리드 스코어링 테이블
 
 | 테이블 | 설명 |
 |--------|------|
-| `FACTOR_STATS` | 팩터별 IC/IR 통계 |
+| `FACTOR_METADATA` | 팩터별 IC/IR 통계 |
 | `CONDITION_PERFORMANCE` | 복합 조건 성과 |
 | `NEWS_FACTOR_STATS` | 뉴스 카테고리별 성과 |
+
+### 경쟁사 수혜 분석 테이블
+
+| 테이블 | 설명 |
+|--------|------|
+| `INDUSTRY_COMPETITORS` | 산업/경쟁사 매핑 |
+| `EVENT_IMPACT_RULES` | 이벤트 영향 규칙 |
+| `SECTOR_RELATION_STATS` | 섹터 디커플링 통계 |
 
 ---
 
@@ -487,7 +482,6 @@ GET  /health              # 헬스 체크
 GET  /api/watchlist       # Watchlist 조회
 GET  /api/portfolio       # 포트폴리오 조회
 GET  /api/trades          # 거래 내역
-GET  /api/pipeline/status # 파이프라인 상태
 POST /api/commands        # 에이전트 명령
 ```
 
@@ -509,14 +503,11 @@ MARIADB_DBNAME: jennie_db
 # Redis
 REDIS_URL: redis://127.0.0.1:6379/0
 
-# ChromaDB
-CHROMA_SERVER_HOST: 127.0.0.1
-
 # 거래 모드
 TRADING_MODE: REAL  # or MOCK
 
-# API Keys (secrets.json에서 로드)
-SECRETS_FILE: /app/config/secrets.json
+# LLM 점수 기준
+MIN_LLM_SCORE: 70  # Real: 70, Mock: 50
 ```
 
 ### Docker Compose 프로파일
@@ -538,36 +529,11 @@ Mock 모드는 실제 거래 없이 전체 파이프라인을 테스트할 수 �
 | `TRADING_MODE` | REAL | MOCK | 거래 모드 |
 | `DRY_RUN` | false | true | 실제 주문 실행 여부 |
 | `MIN_LLM_SCORE` | 70 | 50 | 매수 최소 점수 기준 |
-| `KIS_BASE_URL` | 실서버 | Mock 서버 | KIS API 엔드포인트 |
 
-#### Mock 모드 특징
-
+Mock 모드 특징:
 - 🧪 **[MOCK 테스트]** 표시가 텔레그램 알림에 추가
 - ⚠️ **[DRY RUN]** 표시로 실제 주문이 아님을 명시
 - 💰 LLM 토큰 절약 (토론 생성 건너뜀)
-- 📊 기존 캐시된 LLM 점수 활용
-
-#### Mock 모드 테스트 방법
-
-```bash
-# Mock 스택 실행
-docker compose --profile mock up -d
-
-# Buy Scanner 수동 트리거
-docker exec buy-scanner-mock python3 -c "
-import pika, json
-conn = pika.BlockingConnection(pika.URLParameters('amqp://guest:guest@localhost:5672/'))
-ch = conn.channel()
-ch.queue_declare(queue='mock.jobs.buy-scanner', durable=True)
-ch.basic_publish(exchange='', routing_key='mock.jobs.buy-scanner', 
-    body=json.dumps({'trigger': 'manual_test'}),
-    properties=pika.BasicProperties(delivery_mode=2))
-conn.close()
-"
-
-# 로그 확인
-docker logs buy-executor-mock --since 2m
-```
 
 ---
 
@@ -593,31 +559,9 @@ docker compose logs scout-job --tail 50
 ## 🔒 보안 고려사항
 
 - `secrets.json`은 절대 커밋하지 않음 (`.gitignore` 포함)
-- API 키는 환경변수 또는 Secret Manager 사용
+- API 키는 secrets.json 파일로 관리
 - 실제 거래 모드에서는 충분한 테스트 후 운영
-
----
-
-## 📝 변경 이력
-
-### v5.1.1 (2025-12-05)
-
-**Mock 모드 개선**
-- ✅ `MIN_LLM_SCORE` 환경변수 분리 (Real: 70점, Mock: 50점)
-- ✅ 텔레그램 알림에 Mock/DRY RUN 표시 추가
-  - 🧪 **[MOCK 테스트]** - Mock 모드일 때 표시
-  - ⚠️ **[DRY RUN - 실제 주문 없음]** - DRY_RUN 모드일 때 표시
-- ✅ Mock 모드 매수/매도 전체 파이프라인 테스트 검증 완료
-
-**문서 개선**
-- Mock 모드 설정 및 테스트 방법 문서화
-
-### v5.1.0 (2025-12-04)
-
-- 경쟁사 수혜 분석 시스템 추가
-- 하이브리드 스코어링 (정량 60% + LLM 40%)
-- 페어 트레이딩 전략
-- GCP → WSL2 Docker Compose 마이그레이션
+- 가상 계좌로 충분히 테스트 후 실계좌 전환
 
 ---
 
@@ -629,12 +573,16 @@ MIT License
 
 ## 🤝 기여
 
-이 프로젝트는 Claude, Gemini, GPT 등 여러 AI 모델의 협업으로 개발되었습니다.
+이 프로젝트에 관심을 가져주셔서 감사합니다.
+
+버그 리포트, 기능 제안, PR 모두 환영합니다!
 
 ---
 
 <div align="center">
 
-**Ultra Jennie** - *AI가 발굴하고, 통계가 검증하고, 사람이 결정한다.*
+**Ultra Jennie v1.0**
+
+*AI가 발굴하고, 통계가 검증하고, 사람이 결정한다.*
 
 </div>

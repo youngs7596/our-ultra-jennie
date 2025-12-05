@@ -1,6 +1,34 @@
-# services/buy-scanner/main.py
-# Version: v3.5
-# Buy Scanner Service - Flask 엔트리포인트
+"""
+services/buy-scanner/main.py - 매수 신호 스캔 서비스
+=================================================
+
+이 서비스는 Watchlist 종목들의 기술적 매수 신호를 스캔합니다.
+
+매수 신호 유형:
+-------------
+1. RSI 과매도 (RSI < 30)
+2. 볼린저밴드 하단 터치
+3. 20일 저항선 돌파
+4. 골든크로스 (MA5 > MA20)
+
+처리 흐름:
+---------
+1. Scheduler/RabbitMQ에서 트리거 수신
+2. Watchlist 종목 조회
+3. 각 종목 기술적 지표 계산
+4. 매수 신호 발생 시 buy-signals 큐로 발행
+
+출력:
+----
+RabbitMQ buy-signals 큐로 매수 후보 발행
+
+환경변수:
+--------
+- PORT: HTTP 서버 포트 (기본: 8081)
+- TRADING_MODE: REAL/MOCK
+- RABBITMQ_URL: RabbitMQ 연결 URL
+- KIS_GATEWAY_URL: KIS Gateway URL
+"""
 
 import os
 import sys

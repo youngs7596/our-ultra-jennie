@@ -1,19 +1,31 @@
-# prompts/competitor_benefit_prompt.py
-# [v5.2] 경쟁사 수혜 분석 시스템 - Scout Agent 확장
-# 작업 LLM: Claude Opus 4.5
-# 참조: Claude, Gemini, GPT 3자 합의 기반 설계
-
 """
-경쟁사 수혜 분석 (Competitor Benefit Analysis)
+prompts/competitor_benefit_prompt.py - 경쟁사 수혜 분석 프롬프트
+=============================================================
+
+이 모듈은 경쟁사 악재 발생 시 반사이익 종목을 분석하는 프롬프트를 제공합니다.
 
 핵심 아이디어:
-- A기업 악재 → B기업(경쟁사) 호재
-- 예: 쿠팡 개인정보 유출 → 네이버/컬리 수혜
+------------
+A기업 악재 → B기업(경쟁사) 호재
+예: 쿠팡 개인정보 유출 → 네이버/컬리 수혜
 
-3자 합의 설계 원칙:
-1. [Gemini] 프롬프트 한 줄로 빠른 적용
-2. [Claude] 이벤트-영향도 매핑 체계화
-3. [GPT] 뉴스 카테고리 세분화 + 리스크 관리
+섹터 정의 (COMPETITOR_GROUPS):
+----------------------------
+- ECOMMERCE: 이커머스 (쿠팡, 네이버, 컬리 등)
+- SEMICONDUCTOR: 반도체 (삼성전자, SK하이닉스 등)
+- AUTO: 자동차 (현대차, 기아, 테슬라 등)
+- FINANCE: 금융 (KB금융, 신한지주 등)
+- TELECOM: 통신 (SK텔레콤, KT, LG유플러스)
+- PLATFORM: 플랫폼 (카카오, 네이버, 배민 등)
+- BATTERY: 배터리 (LG에너지솔루션, 삼성SDI 등)
+
+이벤트 유형 (EVENT_IMPACT_RULES):
+-------------------------------
+- SECURITY_BREACH: 보안사고 (해킹, 개인정보 유출)
+- SERVICE_OUTAGE: 서비스 장애
+- RECALL: 제품 리콜
+- OWNER_RISK: 오너 리스크 (구속, 횡령)
+- REGULATION: 규제 (과징금, 제재)
 """
 
 from __future__ import annotations

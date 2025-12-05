@@ -1,9 +1,34 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-Scout Job Service - Main API
-Cloud Scheduler에 의해 HTTP로 트리거되는 Watchlist 갱신 서비스
+services/scout-job/main.py - AI 종목 발굴 서비스
+==============================================
+
+이 서비스는 멀티 LLM 파이프라인으로 매수 후보 종목을 발굴합니다.
+
+Scout Pipeline:
+--------------
+1. Universe 구성: KOSPI 200 + 추가 조건
+2. Quant Scoring: 정량 팩터 분석 (비용 $0)
+3. Hunter Analysis: Claude 심층 분석
+4. Debate: Bull vs Bear AI 토론
+5. Judge Decision: OpenAI 최종 판단
+6. Watchlist 저장: 상위 15개 종목
+
+실행 트리거:
+----------
+- RabbitMQ: jobs.scout-job 큐
+- HTTP: POST /run
+- Scheduler: 매일 장 시작 전
+
+출력:
+----
+- WATCHLIST 테이블 업데이트
+- LLM 점수 및 분석 사유 저장
+
+환경변수:
+--------
+- PORT: HTTP 서버 포트 (기본: 8087)
+- TRADING_MODE: REAL/MOCK
+- RABBITMQ_URL: RabbitMQ 연결 URL
 """
 
 from flask import Flask, jsonify

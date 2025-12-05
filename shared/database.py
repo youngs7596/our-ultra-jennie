@@ -1,7 +1,47 @@
-# youngs75_jennie/database.py
-# Version: v3.7
-# 작업 LLM: Claude Sonnet 4.5, Claude Opus 4.5
-# [모듈] Oracle DB 및 MariaDB/Redis 연동, 데이터 적재/조회 유틸리티를 제공합니다.
+"""
+shared/database.py - Ultra Jennie 데이터베이스 유틸리티 모듈
+==========================================================
+
+이 모듈은 MariaDB 및 Redis와의 연동을 담당합니다.
+
+핵심 기능:
+---------
+1. DB 연결 관리: MariaDB 연결 풀 관리
+2. Redis 캐시: 시장 국면, 토큰 등 실시간 데이터 캐싱
+3. Watchlist 관리: 관심 종목 CRUD
+4. Portfolio 관리: 보유 종목 CRUD
+5. Trade Log: 거래 이력 기록
+6. 주가 데이터: 일봉/분봉 조회
+
+주요 테이블:
+----------
+- WATCHLIST: 관심 종목 (LLM 점수 포함)
+- PORTFOLIO / PORTFOLIO_MOCK: 보유 종목
+- TRADELOG / TRADELOG_MOCK: 거래 이력
+- STOCK_DAILY_PRICES_3Y: 3년 일봉 데이터
+- STOCK_MASTER: 종목 마스터 (코드, 이름, 섹터)
+- NEWS_SENTIMENT: 뉴스 감성 분석 결과
+
+사용 예시:
+---------
+>>> from shared.database import get_db_connection, get_active_watchlist
+>>>
+>>> conn = get_db_connection()
+>>> watchlist = get_active_watchlist(conn)
+>>> for code, info in watchlist.items():
+...     print(f"{code}: {info['name']} - Score {info.get('llm_score', 'N/A')}")
+
+환경변수:
+--------
+- DB_TYPE: 데이터베이스 타입 (MARIADB)
+- MARIADB_HOST: MariaDB 호스트
+- MARIADB_PORT: MariaDB 포트 (기본: 3306)
+- MARIADB_USER: MariaDB 사용자
+- MARIADB_PASSWORD: MariaDB 비밀번호
+- MARIADB_DBNAME: MariaDB 데이터베이스명
+- REDIS_URL: Redis 연결 URL (기본: redis://localhost:6379)
+- TRADING_MODE: 거래 모드 (REAL/MOCK) - 테이블 suffix 결정
+"""
 
 import logging
 import pandas as pd

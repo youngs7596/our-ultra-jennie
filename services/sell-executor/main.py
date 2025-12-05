@@ -1,5 +1,42 @@
-# main.py
-# Sell Executor Service - Flask 엔트리포인트
+"""
+services/sell-executor/main.py - 매도 실행 서비스
+===============================================
+
+이 서비스는 매도 신호를 받아 실제 주문을 실행합니다.
+
+주요 기능:
+---------
+1. RabbitMQ에서 매도 신호 수신 (sell-orders 큐)
+2. 보유 종목 확인 및 매도 수량 계산
+3. KIS Gateway를 통한 매도 주문 실행
+4. 손익 계산 및 텔레그램 알림
+5. 거래 로그 기록 (TRADELOG)
+
+입력 (RabbitMQ 메시지):
+--------------------
+{
+    "stock_code": "005930",
+    "stock_name": "삼성전자",
+    "sell_reason": "PROFIT_TARGET",
+    "current_price": 77000,
+    "profit_pct": 10.0
+}
+
+매도 사유:
+---------
+- PROFIT_TARGET: 목표가 도달
+- STOP_LOSS: 손절가 도달
+- RSI_OVERBOUGHT: RSI 과매수
+- TIME_EXIT: 보유 기간 초과
+
+환경변수:
+--------
+- PORT: HTTP 서버 포트 (기본: 8083)
+- TRADING_MODE: REAL/MOCK
+- DRY_RUN: true면 실제 주문 미실행
+- RABBITMQ_URL: RabbitMQ 연결 URL
+- KIS_GATEWAY_URL: KIS Gateway URL
+"""
 
 import os
 import sys
