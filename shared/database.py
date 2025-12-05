@@ -542,7 +542,8 @@ def get_connection(max_retries=3, retry_delay=1, validate_connection=True):
                 password=password,
                 database=dbname,
                 charset='utf8mb4',
-                cursorclass=pymysql.cursors.DictCursor
+                cursorclass=pymysql.cursors.DictCursor,
+                auth_plugin_map={'auth_gssapi_client': 'mysql_native_password'}
             )
             
             if validate_connection:

@@ -35,8 +35,8 @@ def _build_connection_url() -> str:
     user_enc = quote_plus(user)
     password_enc = quote_plus(password)
     
-    # PyMySQL 드라이버 사용
-    return f"mysql+pymysql://{user_enc}:{password_enc}@{host}:{port}/{dbname}?charset=utf8mb4"
+    # PyMySQL 드라이버 사용 (auth_plugin=mysql_native_password로 GSSAPI 우회)
+    return f"mysql+pymysql://{user_enc}:{password_enc}@{host}:{port}/{dbname}?charset=utf8mb4&auth_plugin=mysql_native_password"
 
 
 def _get_db_type():
