@@ -1,5 +1,5 @@
 # shared/news_classifier.py
-# [v5.2] 뉴스 카테고리 분류기 - 경쟁사 수혜 분석 시스템 Phase 1
+# [v1.0] 뉴스 카테고리 분류기 - 경쟁사 수혜 분석 시스템
 # 작업 LLM: Claude Opus 4.5
 # 참조: GPT 제안 - 뉴스 카테고리 세분화
 

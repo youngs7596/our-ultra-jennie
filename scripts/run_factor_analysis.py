@@ -96,7 +96,7 @@ def parse_args():
     parser.add_argument("--skip-compound", action="store_true",
                         help="복합 조건 분석 건너뛰기")
     parser.add_argument("--backtest", action="store_true",
-                        help="[v5.0.5] 팩터 가중치 검증용 백테스트 실행")
+                        help="[v1.0] 팩터 가중치 검증용 백테스트 실행")
     parser.add_argument("--backtest-days", type=int, default=180,
                         help="백테스트 기간 (일, 기본: 180)")
     return parser.parse_args()
@@ -191,7 +191,7 @@ def main():
             for err in results['errors']:
                 logger.warning(f"   • {err}")
         
-        # [v5.0.5] 백테스트 실행
+        # [v1.0] 백테스트 실행
         if args.backtest:
             logger.info("\n" + "=" * 60)
             logger.info("🧪 백테스트 시뮬레이션 시작")

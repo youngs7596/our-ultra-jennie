@@ -70,7 +70,7 @@ digraph MyUltraJennie {
         LLM [label="JennieBrain\nClaude / Gemini", fillcolor="#6a0dad", color="#9b59b6"];
         NEWS_CRAWLER [label="News Crawler\n뉴스/RSS 수집", fillcolor="#1e5f74", color="#3498db"];
         CLASSIFIER [label="NewsClassifier\n뉴스 분류", fillcolor="#1e3799", color="#4a69bd"];
-        SCOUT [label="Scout Job v5.1\n종목 발굴", fillcolor="#1e3799", color="#4a69bd"];
+        SCOUT [label="Scout Job v1.0\n종목 발굴", fillcolor="#1e3799", color="#4a69bd"];
         HYBRID [label="Hybrid Scoring\n복합 점수", fillcolor="#1e3799", color="#4a69bd"];
         COMP_ANALYZER [label="Competitor Analyzer\n경쟁사 분석", fillcolor="#1e3799", color="#4a69bd"];
         PAIR_STRAT [label="Pair Trading\n롱/숏 전략", fillcolor="#1e3799", color="#4a69bd"];

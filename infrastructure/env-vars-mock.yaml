@@ -13,23 +13,22 @@ REAL_SECRET_ID_APP_KEY: "kis-r-app-key"
 REAL_SECRET_ID_APP_SECRET: "kis-r-app-secret"
 REAL_SECRET_ID_ACCOUNT_PREFIX: "kis-r-account-no"
 
-# 4. KIS API Base URLs (Mock 모드: localhost KIS Mock 사용)
+# 3. KIS API Base URLs (Mock 모드: localhost KIS Mock 사용)
 KIS_BASE_URL_MOCK: "http://localhost:9443"
 KIS_BASE_URL_REAL: "https://openapi.koreainvestment.com:9443"
 
-# 5. Gemini & OAuth
+# 4. LLM API Keys (secrets.json 키 기준)
 SECRET_ID_GEMINI_API_KEY: "gemini-api-key"
-SECRET_ID_GOOGLE_OAUTH_CLIENT_ID: "google-oauth-client-id"
-SECRET_ID_GOOGLE_OAUTH_CLIENT_SECRET: "google-oauth-client-secret"
-SECRET_ID_ALLOWED_EMAILS: "allowed-emails"
+SECRET_ID_OPENAI_API_KEY: "openai-api-key"
+SECRET_ID_CLAUDE_API_KEY: "claude-api-key"
 
-# 6. 투자 및 토큰 설정
+# 5. 투자 및 토큰 설정
 INVESTMENT_AMOUNT: "1000000"
 DAILY_BUY_LIMIT_AMOUNT: "1000000"
 KIS_TOKEN_FILE_PATH: "/tmp/kis_token.json"
 KIS_ACCOUNT_SUFFIX: "01"
 
-# 7. 하락장 대응 (LLM 기반) – REAL과 동일 조건
+# 6. 하락장 대응 (LLM 기반)
 ALLOW_BEAR_TRADING: "true"
 MIN_LLM_CONFIDENCE_BEAR: "80"
 BEAR_POSITION_RATIO: "0.2"
@@ -38,7 +37,7 @@ BEAR_FIRST_TP_PCT: "0.03"
 BEAR_PARTIAL_CLOSE_RATIO: "0.5"
 BEAR_VOLUME_SPIKE_MULTIPLIER: "1.5"
 
-# 8. Gateway / Redis / Chroma (network_mode: host용 localhost)
+# 7. Gateway / Redis / Chroma (network_mode: host용 localhost)
 USE_KIS_GATEWAY: "true"
 KIS_GATEWAY_URL: "http://localhost:9080"
 USE_GATEWAY_AUTH: "false"
@@ -49,34 +48,30 @@ CHROMA_PORT: "8000"
 CIRCUIT_BREAKER_FAIL_MAX: "20"
 CIRCUIT_BREAKER_TIMEOUT: "60"
 
-# 9. RabbitMQ 설정 (Cloud Tasks 대체)
+# 8. RabbitMQ 설정
 USE_RABBITMQ: "true"
 USE_CLOUD_TASKS: "false"
 RABBITMQ_URL: "amqp://guest:guest@localhost:5672/"
 RABBITMQ_QUEUE_SELL_ORDERS: "sell-orders"
 
-# 10. Pub/Sub Emulator (localhost)
-PUBSUB_EMULATOR_HOST: "localhost:8085"
-
-# 11. 뉴스 감성 분석 설정
+# 9. 뉴스 감성 분석 설정
 MAX_SENTIMENT_DOCS_PER_RUN: "40"
 SENTIMENT_COOLDOWN_SECONDS: "0.2"
 
-# 12. MariaDB 설정
+# 10. MariaDB 설정 (비밀번호는 secrets.json에서 로드)
 DB_TYPE: "MARIADB"
 MARIADB_HOST: "127.0.0.1"
 MARIADB_PORT: "3306"
-MARIADB_USER: "root"
-MARIADB_PASSWORD: "q1w2e3R$"
+# MARIADB_USER, MARIADB_PASSWORD는 secrets.json의 mariadb-user, mariadb-password 사용
 MARIADB_DBNAME: "jennie_db"
 SQLALCHEMY_POOL_SIZE: "5"
 SQLALCHEMY_MAX_OVERFLOW: "20"
 
-# 13. 로깅
+# 11. 로깅
 LOG_LEVEL: "INFO"
 PYTHONPATH: "/app"
 
-# 13. Scheduler (Mock 전용)
+# 12. Scheduler (Mock 전용)
 SCHEDULER_SCOPE: "mock"
 SCHEDULER_DB_PATH: "/app/data/scheduler-mock.db"
 SCHEDULER_TICK_SECONDS: "3"
@@ -90,5 +85,5 @@ ENABLE_PRICE_MONITOR_JOB_WORKER: "true"
 SCHEDULER_QUEUE_SCOUT_JOB: "mock.jobs.scout"
 ENABLE_SCOUT_JOB_WORKER: "true"
 
-# 14. 매수 기준 점수 (Mock 테스트용 - 낮은 기준)
+# 13. 매수 기준 점수 (Mock 테스트용 - 낮은 기준)
 MIN_LLM_SCORE: "50"

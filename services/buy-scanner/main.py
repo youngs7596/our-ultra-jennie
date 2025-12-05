@@ -227,7 +227,7 @@ def _bootstrap_scheduler_job():
 def handle_scheduler_job_message(payload: dict):
     """Scheduler Queue에서 전달된 Job 처리"""
     job_msg = parse_job_message(payload)
-    # [v5.1] "unknown"일 때도 환경변수 job_id 사용
+    # [v1.0] "unknown"일 때도 환경변수 job_id 사용
     effective_job_id = job_msg.job_id if job_msg.job_id and job_msg.job_id != "unknown" else _get_scheduler_job_id()
     logger.info(
         "🕒 Scheduler Job 수신: job=%s (effective=%s) run=%s trigger=%s delay=%s",

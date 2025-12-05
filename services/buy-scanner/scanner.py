@@ -483,7 +483,7 @@ class BuyScanner:
             sentiment_reason = sentiment_data.get('reason', '분석 없음')
             news_category = sentiment_data.get('category', None)
             
-            # [v5.0.6 Phase B] 역신호 카테고리 매수 금지 플래그
+            # [v1.0] 역신호 카테고리 매수 금지 플래그
             # 팩터 분석 결과: 수주(43.7%), 배당(37.6%) 뉴스는 역신호!
             REVERSE_SIGNAL_CATEGORIES = {'수주', '배당', '자사주', '주주환원', '배당락'}
             

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scout v5.0.2 HybridScorer - 정량+정성 하이브리드 점수 결합
+Scout v1.0 HybridScorer - 정량+정성 하이브리드 점수 결합
 
 세 설계의 핵심 아이디어 통합:
 - Claude: 정량/정성 분리 후 기계적 결합, 최소 품질 기준
@@ -16,7 +16,7 @@ final_score = quant_score × quant_weight + llm_score × llm_weight
 2. 최소 품질 기준 40점 미만 → 자동 탈락
 3. 신뢰도 낮은 통계 → 정량 비중 감소
 
-[v5.0.2] GPT 피드백 반영:
+[v1.0.2] GPT 피드백 반영:
 - 뉴스 통계 표본수 신뢰도 보정 추가
 """
 
@@ -65,7 +65,7 @@ class HybridScoreResult:
     condition_sample_count: Optional[int] = None
     condition_confidence: str = "LOW"
     
-    # [v5.0.2] 뉴스 통계 정보 (GPT 피드백 반영)
+    # [v1.0.2] 뉴스 통계 정보 (GPT 피드백 반영)
     news_stat_win_rate: Optional[float] = None
     news_stat_sample_count: Optional[int] = None
     news_stat_confidence: str = "LOW"
@@ -206,7 +206,7 @@ class HybridScorer:
         """
         단일 종목의 하이브리드 점수 계산
         
-        [v5.0.2] GPT 피드백 반영:
+        [v1.0.2] GPT 피드백 반영:
         - 뉴스 통계 표본수 신뢰도 보정 추가
         
         Args:
@@ -242,7 +242,7 @@ class HybridScorer:
                 )
                 hybrid_score = adjusted_quant_contribution + (llm_score * adj_llm_w)
         
-        # 4. [v5.0.2] 뉴스 통계 신뢰도 보정 (GPT 피드백 반영)
+        # 4. [v1.0.2] 뉴스 통계 신뢰도 보정 (GPT 피드백 반영)
         # 뉴스 통계 표본수가 적으면 news_stat_score 기여분을 감소
         news_confidence_applied = False
         if quant_result.news_stat_sample_count is not None and quant_result.news_stat_sample_count < 30:
@@ -411,9 +411,9 @@ class HybridScorer:
             마크다운 형식 리포트
         """
         if not selected_results:
-            return "## Scout v5.0 분석 결과\n\n선정된 종목이 없습니다."
+            return "## Scout v1.0 분석 결과\n\n선정된 종목이 없습니다."
         
-        report = f"""## 🎯 Scout v5.0 Hybrid Scoring 분석 결과
+        report = f"""## 🎯 Scout v1.0 Hybrid Scoring 분석 결과
 
 **분석 시각**: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC  
 **시장 국면**: {self.market_regime}  
@@ -478,7 +478,7 @@ def run_hybrid_scoring_pipeline(
     max_watchlist: int = 15,
 ) -> Tuple[List[HybridScoreResult], str]:
     """
-    Scout v5.0 하이브리드 스코어링 전체 파이프라인 실행
+    Scout v1.0 하이브리드 스코어링 전체 파이프라인 실행
     
     단계:
     1. 정량 점수 계산 (QuantScorer)
@@ -500,7 +500,7 @@ def run_hybrid_scoring_pipeline(
         (최종 선정 결과 리스트, 요약 리포트)
     """
     logger.info("=" * 60)
-    logger.info("   🚀 Scout v5.0 Hybrid Scoring Pipeline 시작")
+    logger.info("   🚀 Scout v1.0 Hybrid Scoring Pipeline 시작")
     logger.info("=" * 60)
     
     # Step 1: 정량 점수 계산
@@ -580,7 +580,7 @@ def run_hybrid_scoring_pipeline(
     report = hybrid_scorer.generate_summary_report(final_selected)
     
     logger.info("\n" + "=" * 60)
-    logger.info(f"   🏁 Scout v5.0 Pipeline 완료: {len(final_selected)}개 종목 선정")
+    logger.info(f"   🏁 Scout v1.0 Pipeline 완료: {len(final_selected)}개 종목 선정")
     logger.info("=" * 60)
     
     return final_selected, report

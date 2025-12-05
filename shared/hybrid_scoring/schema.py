@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scout v5.0.3 Hybrid Scoring - DB 스키마 정의
+Scout v1.0 Hybrid Scoring - DB 스키마 정의
 
 새로운 테이블:
 1. FACTOR_METADATA - 팩터별 예측력 메타데이터 (IC, IR, 가중치)
@@ -9,7 +9,7 @@ Scout v5.0.3 Hybrid Scoring - DB 스키마 정의
 3. NEWS_FACTOR_STATS - 뉴스 카테고리별 영향도 통계
 4. DAILY_QUANT_SCORE - 일별 정량 점수 기록 (역추적용)
 
-[v5.0.3] Claude Opus 4.5 피드백 반영:
+[v1.0.3] Claude Opus 4.5 피드백 반영:
 - Oracle UPSERT (MERGE INTO) 호환성 추가
 """
 
@@ -31,7 +31,7 @@ def is_oracle() -> bool:
 
 
 # =============================================================================
-# [v5.0.3] Oracle 호환 UPSERT 유틸리티
+# [v1.0.3] Oracle 호환 UPSERT 유틸리티
 # Claude Opus 4.5 피드백: "ON DUPLICATE KEY UPDATE는 MariaDB 전용"
 # =============================================================================
 
@@ -42,7 +42,7 @@ def execute_upsert(cursor,
                    unique_keys: List[str],
                    update_columns: List[str] = None) -> bool:
     """
-    [v5.0.3] DB 타입에 따라 적절한 UPSERT 실행
+    [v1.0.3] DB 타입에 따라 적절한 UPSERT 실행
     
     Args:
         cursor: DB 커서
@@ -459,7 +459,7 @@ def create_hybrid_scoring_tables(connection) -> bool:
 
 def get_default_factor_weights() -> dict:
     """
-    [v5.1] 기본 팩터 가중치 반환 (3 AI 합의 - D+60 기준)
+    [v1.0] 기본 팩터 가중치 반환 (3 AI 합의 - D+60 기준)
     
     핵심 발견 (2025-12-05 팩터 분석):
     - RSI 과매도: D+5 54.6%, D+60 60.1% → 핵심 팩터

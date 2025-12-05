@@ -45,7 +45,7 @@ digraph BuySellDecisionFlow {
         penwidth=2;
         margin=12;
 
-        SCOUT [label="Scout Job v5.1\n종목 발굴", fillcolor="#1e3799", color="#4a69bd"];
+        SCOUT [label="Scout Job v1.0\n종목 발굴", fillcolor="#1e3799", color="#4a69bd"];
         LLM [label="JennieBrain\n(LLM)", fillcolor="#6a0dad", color="#9b59b6"];
         NEWS [label="News Crawler\n뉴스/RSS", fillcolor="#1e5f74", color="#3498db"];
         REDIS_COMP [label="Redis\n경쟁사 수혜점수", fillcolor="#e74c3c", color="#c0392b", shape=cylinder];

@@ -1423,12 +1423,12 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
             return {'score': 0, 'grade': 'D', 'reason': f"판결 오류: {e}"}
 
     # =================================================================
-    # [v5.0] Scout Hybrid Scoring - 정량 통계 컨텍스트 주입
+    # [v1.0] Scout Hybrid Scoring - 정량 통계 컨텍스트 주입
     # =================================================================
     
     def get_jennies_analysis_score_v5(self, stock_info: dict, quant_context: str = None) -> dict:
         """
-        [v5.0] Scout Hybrid Scoring - 정량 통계 컨텍스트가 포함된 Hunter 분석
+        [v1.0] Scout Hybrid Scoring - 정량 통계 컨텍스트가 포함된 Hunter 분석
         
         기존 get_jennies_analysis_score와 달리, QuantScorer의 정량 분석 결과를
         프롬프트에 포함하여 LLM이 데이터 기반 판단을 하도록 유도합니다.
@@ -1468,7 +1468,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
     
     def _build_hunter_prompt_v5(self, stock_info: dict, quant_context: str = None) -> str:
         """
-        [v5.0] 정량 통계 컨텍스트가 포함된 Hunter 프롬프트 생성
+        [v1.0] 정량 통계 컨텍스트가 포함된 Hunter 프롬프트 생성
         
         GPT 설계 핵심: "이 통계는 중요한 판단 근거이니 반드시 반영하세요"
         """
@@ -1527,7 +1527,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유"}}
     
     def run_judge_scoring_v5(self, stock_info: dict, debate_log: str, quant_context: str = None) -> dict:
         """
-        [v5.0] Scout Hybrid Scoring - 정량 컨텍스트 포함 Judge 판결
+        [v1.0] Scout Hybrid Scoring - 정량 컨텍스트 포함 Judge 판결
         
         기존 run_judge_scoring에 정량 분석 결과를 추가하여
         더 균형 잡힌 최종 판결을 내립니다.
@@ -1618,7 +1618,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
             return {'score': 0, 'grade': 'D', 'reason': f"판결 오류: {e}"}
     
     # -----------------------------------------------------------------
-    # [v5.0.3] 정량 컨텍스트 기반 분석 (Claude Opus 4.5 피드백 반영)
+    # [v1.0] 정량 컨텍스트 기반 분석 (Claude Opus 4.5 피드백 반영)
     # -----------------------------------------------------------------
     def analyze_with_context(self, 
                              stock_code: str,
@@ -1627,7 +1627,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
                              news_summary: str = "",
                              fundamentals: dict = None) -> dict:
         """
-        [v5.0.3] HybridScorer용 정량 컨텍스트 포함 LLM 분석
+        [v1.0] HybridScorer용 정량 컨텍스트 포함 LLM 분석
         
         Claude Opus 4.5 피드백: "analyze_with_context 메서드가 기존 JennieBrain에 있는지 확인 필요"
         
@@ -1646,7 +1646,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
                    (self.provider_openai if self.provider_openai else self.provider_gemini)
         
         if provider is None:
-            logger.error("❌ [JennieBrain/v5.0.3] LLM 모델이 초기화되지 않았습니다!")
+            logger.error("❌ [JennieBrain/v1.0] LLM 모델이 초기화되지 않았습니다!")
             return {'score': 50, 'grade': 'C', 'reason': 'JennieBrain 초기화 실패'}
         
         # 펀더멘털 정보 포맷팅
@@ -1688,7 +1688,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
 3. **뉴스 맥락 분석**
    - 정량이 좋아도 치명적 악재(횡령, 분식회계)가 있으면 감점
    
-   ⚠️ **역신호 경고 (v5.0.5 팩터 분석 결과)**:
+   ⚠️ **역신호 경고 (v1.0 팩터 분석 결과)**:
    - 뉴스 호재 전체 승률: 47.3% (동전 던지기보다 낮음!)
    - 수주 뉴스 승률: 43.7% (역신호! 반대로 하면 56.3%)
    - 배당 뉴스 승률: 37.6% (강한 역신호! 반대로 하면 62.4%)
@@ -1705,7 +1705,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
 JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3문장)"}}"""
 
         try:
-            logger.info(f"--- [JennieBrain/v5.0.3] 정량 컨텍스트 분석 ({provider.name}): {stock_name} ---")
+            logger.info(f"--- [JennieBrain/v1.0] 정량 컨텍스트 분석 ({provider.name}): {stock_name} ---")
             
             result = provider.generate_json(
                 prompt,
@@ -1713,15 +1713,15 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
                 temperature=0.2
             )
             
-            logger.info(f"   ✅ v5.0.3 분석 완료: {stock_name} - {result.get('score')}점 ({result.get('grade')})")
+            logger.info(f"   ✅ v1.0 분석 완료: {stock_name} - {result.get('score')}점 ({result.get('grade')})")
             return result
             
         except Exception as e:
-            logger.error(f"❌ [JennieBrain/v5.0.3] 분석 실패: {e}")
+            logger.error(f"❌ [JennieBrain/v1.0] 분석 실패: {e}")
             return {'score': 50, 'grade': 'C', 'reason': f"분석 오류: {e}"}
 
     # =================================================================
-    # [v5.2] 경쟁사 수혜 분석 (Competitor Benefit Analysis)
+    # [v1.0] 경쟁사 수혜 분석 (Competitor Benefit Analysis)
     # Claude, Gemini, GPT 3자 합의 기반 설계
     # =================================================================
     
@@ -1731,7 +1731,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
                                     sector: str,
                                     recent_news: str) -> dict:
         """
-        [v5.2] 경쟁사 악재로 인한 반사이익 분석
+        [v1.0] 경쟁사 악재로 인한 반사이익 분석
         
         예: 쿠팡 개인정보 유출 → 네이버/컬리 수혜 분석
         
@@ -1755,7 +1755,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
                 EVENT_IMPACT_RULES
             )
         except ImportError:
-            logger.warning("⚠️ [JennieBrain/v5.2] competitor_benefit_prompt 모듈 로드 실패")
+            logger.warning("⚠️ [JennieBrain/v1.0] competitor_benefit_prompt 모듈 로드 실패")
             return {'competitor_events': [], 'total_benefit_score': 0, 'analysis_reason': '모듈 로드 실패'}
         
         # Claude Haiku 우선 (빠르고 프롬프트 준수 우수)
@@ -1763,7 +1763,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
                    (self.provider_openai if self.provider_openai else self.provider_gemini)
         
         if provider is None:
-            logger.error("❌ [JennieBrain/v5.2] LLM 모델이 초기화되지 않았습니다!")
+            logger.error("❌ [JennieBrain/v1.0] LLM 모델이 초기화되지 않았습니다!")
             return {'competitor_events': [], 'total_benefit_score': 0, 'analysis_reason': 'LLM 미초기화'}
         
         # 프롬프트 생성
@@ -1798,7 +1798,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
         }
         
         try:
-            logger.info(f"--- [JennieBrain/v5.2] 경쟁사 수혜 분석 ({provider.name}): {target_stock_name} ---")
+            logger.info(f"--- [JennieBrain/v1.0] 경쟁사 수혜 분석 ({provider.name}): {target_stock_name} ---")
             
             result = provider.generate_json(
                 prompt,
@@ -1821,7 +1821,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
             return result
             
         except Exception as e:
-            logger.error(f"❌ [JennieBrain/v5.2] 경쟁사 수혜 분석 실패: {e}")
+            logger.error(f"❌ [JennieBrain/v1.0] 경쟁사 수혜 분석 실패: {e}")
             return {'competitor_events': [], 'total_benefit_score': 0, 'analysis_reason': f"분석 오류: {e}"}
     
     def get_beneficiary_recommendations(self,
@@ -1830,7 +1830,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
                                          event_summary: str,
                                          sector: str) -> dict:
         """
-        [v5.2] 악재 발생 시 수혜 종목 추천
+        [v1.0] 악재 발생 시 수혜 종목 추천
         
         Args:
             event_company: 악재 발생 기업
@@ -1849,7 +1849,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
         try:
             from prompts.competitor_benefit_prompt import build_beneficiary_recommendation_prompt
         except ImportError:
-            logger.warning("⚠️ [JennieBrain/v5.2] competitor_benefit_prompt 모듈 로드 실패")
+            logger.warning("⚠️ [JennieBrain/v1.0] competitor_benefit_prompt 모듈 로드 실패")
             return {'beneficiaries': [], 'top_pick': None, 'holding_period': 'N/A', 'risk_note': '모듈 로드 실패'}
         
         provider = self.provider_claude if hasattr(self, 'provider_claude') and self.provider_claude else \
@@ -1889,7 +1889,7 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
         }
         
         try:
-            logger.info(f"--- [JennieBrain/v5.2] 수혜 종목 추천: {event_company} {event_type} ---")
+            logger.info(f"--- [JennieBrain/v1.0] 수혜 종목 추천: {event_company} {event_type} ---")
             
             result = provider.generate_json(
                 prompt,
@@ -1909,12 +1909,12 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
             return result
             
         except Exception as e:
-            logger.error(f"❌ [JennieBrain/v5.2] 수혜 종목 추천 실패: {e}")
+            logger.error(f"❌ [JennieBrain/v1.0] 수혜 종목 추천 실패: {e}")
             return {'beneficiaries': [], 'top_pick': None, 'holding_period': 'N/A', 'risk_note': f"분석 오류: {e}"}
     
     def _inject_competitor_benefit_context(self, base_prompt: str, competitor_benefit_score: int, competitor_reason: str) -> str:
         """
-        [v5.2] 기존 프롬프트에 경쟁사 수혜 컨텍스트 주입
+        [v1.0] 기존 프롬프트에 경쟁사 수혜 컨텍스트 주입
         
         Args:
             base_prompt: 기존 분석 프롬프트

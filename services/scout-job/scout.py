@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-# Version: v5.1
+# Version: v1.0
 # 작업 LLM: Claude Sonnet 4.5, Claude Opus 4.5
 """
-[v5.1] Scout Job - 경쟁사 수혜 분석 연동
-- [v4.0] 깐깐한 필터링 (기본점수 20, Hunter 통과 60점, Judge 승인 75점)
-- [v4.0] 쿼터제 도입: 최종 Watchlist 상위 15개만 저장
-- [v4.0] Debate 프롬프트 강화: Bull/Bear 캐릭터 극단적으로 설정
-- [v4.0] Redis 상태 저장: Dashboard에서 실시간 파이프라인 진행 상황 확인 가능
-- [v5.1] 경쟁사 수혜 점수 반영: 경쟁사 악재 시 Hunter 점수에 가산
+Scout Job v1.0 - 종목 발굴 파이프라인
+- 깐깐한 필터링 (기본점수 20, Hunter 통과 60점, Judge 승인 75점)
+- [v1.0] 쿼터제 도입: 최종 Watchlist 상위 15개만 저장
+- [v1.0] Debate 프롬프트 강화: Bull/Bear 캐릭터 극단적으로 설정
+- Redis 상태 저장: Dashboard에서 실시간 파이프라인 진행 상황 확인 가능
+- 경쟁사 수혜 점수 반영: 경쟁사 악재 시 Hunter 점수에 가산
 """
 
 import logging
@@ -91,7 +91,7 @@ LLM_CACHE_SUFFIX = "LLM_DECISIONS"
 LLM_LAST_RUN_SUFFIX = "LAST_LLM_RUN_AT"
 ISO_FORMAT_Z = "%Y-%m-%dT%H:%M:%S.%f%z"
 
-# [v4.0] Redis 연결 (Dashboard 실시간 상태 표시용)
+# [v1.0] Redis 연결 (Dashboard 실시간 상태 표시용)
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 _redis_client = None
 
@@ -120,7 +120,7 @@ def update_pipeline_status(
     final_selected: int = 0
 ):
     """
-    [v4.0] Dashboard용 Redis 상태 업데이트
+    [v1.0] Dashboard용 Redis 상태 업데이트
     Dashboard의 Scout Pipeline 페이지에서 실시간으로 진행 상황을 표시
     """
     r = _get_redis()
@@ -145,7 +145,7 @@ def update_pipeline_status(
 
 def save_pipeline_results(results: list):
     """
-    [v4.0] Dashboard용 최종 결과 저장
+    [v1.0] Dashboard용 최종 결과 저장
     """
     r = _get_redis()
     if not r:
@@ -803,7 +803,7 @@ def analyze_sector_momentum(kis_api, db_conn, watchlist_snapshot=None):
                 
                 # 최근 수익률 계산 (변동률 % 사용)
                 try:
-                    # [v5.1 Fix] Changes는 금액, ChagesRatio/ChangesRatio가 %
+                    # [v1.0 Fix] Changes는 금액, ChagesRatio/ChangesRatio가 %
                     # FinanceDataReader 버전에 따라 컬럼명이 다를 수 있음
                     change_pct = row.get('ChagesRatio') or row.get('ChangesRatio') or row.get('ChangeRatio')
                     
@@ -1281,24 +1281,24 @@ def fetch_stock_news_from_chroma(vectorstore, stock_code: str, stock_name: str, 
 
 
 # =============================================================================
-# [v5.0] Scout Hybrid Scoring Pipeline - 정량 기반 필터링
+# [v1.0] Scout Hybrid Scoring Pipeline - 정량 기반 필터링
 # =============================================================================
 
-def is_v5_enabled() -> bool:
-    """Scout v5.0 하이브리드 스코어링 활성화 여부 확인"""
+def is_hybrid_scoring_enabled() -> bool:
+    """Scout v1.0 하이브리드 스코어링 활성화 여부 확인 (SCOUT_V5_ENABLED 환경변수 - 하위호환)"""
     return os.getenv("SCOUT_V5_ENABLED", "false").lower() == "true"
 
 
 def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_df=None):
     """
-    [v5.0] Step 1: 정량 점수 계산 (LLM 호출 없음, 비용 0원)
+    [v1.0] Step 1: 정량 점수 계산 (LLM 호출 없음, 비용 0원)
     
     세 설계의 핵심 아이디어 구현:
     - Claude: 정량 점수를 LLM과 독립적으로 계산
     - Gemini: 비용 0원으로 1차 필터링
     - GPT: 조건부 승률 기반 점수 산출
     
-    [v5.0.1] Gemini 피드백 반영:
+    [v1.0] Gemini 피드백 반영:
     - 데이터 부족 시 is_valid=False 설정하여 "묻어가기" 합격 방지
     
     Args:
@@ -1318,7 +1318,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
         # 일봉 데이터 조회
         daily_prices_df = database.get_daily_prices(db_conn, code, limit=150)
         
-        # [v5.0.1] 데이터 부족 시 is_valid=False 설정 (묻어가기 방지)
+        # [v1.0] 데이터 부족 시 is_valid=False 설정 (묻어가기 방지)
         if daily_prices_df.empty or len(daily_prices_df) < 30:
             data_len = len(daily_prices_df) if not daily_prices_df.empty else 0
             logger.debug(f"   ⚠️ [Quant] {info['name']}({code}) 일봉 데이터 부족 ({data_len}일) → is_valid=False")
@@ -1326,7 +1326,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
             return QuantScoreResult(
                 stock_code=code,
                 stock_name=info['name'],
-                total_score=0.0,  # [v5.0.1] 0점 (중립 50점 아님!)
+                total_score=0.0,  # [v1.0] 0점 (중립 50점 아님!)
                 momentum_score=0.0,
                 quality_score=0.0,
                 value_score=0.0,
@@ -1337,7 +1337,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
                 condition_win_rate=None,
                 condition_sample_count=0,
                 condition_confidence='LOW',
-                is_valid=False,  # [v5.0.1] 묻어가기 방지
+                is_valid=False,  # [v1.0] 묻어가기 방지
                 invalid_reason=f'데이터 부족 ({data_len}일)',
                 details={'note': f'데이터 부족 ({data_len}일)'},
             )
@@ -1354,7 +1354,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
             foreign_net_buy=snapshot.get('foreign_net_buy'),
         )
         
-        # [v5.0.6 Phase B] 역신호 카테고리 체크
+        # [v1.0] 역신호 카테고리 체크
         # 팩터 분석 결과: 수주(43.7%), 배당(37.6%) 뉴스는 역신호!
         REVERSE_SIGNAL_CATEGORIES = {'수주', '배당', '자사주', '주주환원', '배당락'}
         news_category = info.get('news_category') or snapshot.get('news_category')
@@ -1362,7 +1362,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
         if news_category and news_category in REVERSE_SIGNAL_CATEGORIES:
             sentiment_score = info.get('sentiment_score', 50)
             if sentiment_score >= 70:  # 호재로 분류된 경우
-                logger.warning(f"   ⚠️ [v5.0.6] {info['name']}({code}) 역신호 카테고리({news_category}) 감지 - "
+                logger.warning(f"   ⚠️ [v1.0] {info['name']}({code}) 역신호 카테고리({news_category}) 감지 - "
                               f"통계상 승률 50% 미만, 점수 패널티 적용")
                 # 결과에 역신호 정보 추가
                 if result.details is None:
@@ -1376,11 +1376,11 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
     except Exception as e:
         logger.error(f"   ❌ [Quant] {code} 정량 점수 계산 오류: {e}")
         from shared.hybrid_scoring import QuantScoreResult
-        # [v5.0.1] 예외 발생 시에도 is_valid=False 설정 (묻어가기 방지)
+        # [v1.0] 예외 발생 시에도 is_valid=False 설정 (묻어가기 방지)
         return QuantScoreResult(
             stock_code=code,
             stock_name=info['name'],
-            total_score=0.0,  # [v5.0.1] 0점 (중립 50점 아님!)
+            total_score=0.0,  # [v1.0] 0점 (중립 50점 아님!)
             momentum_score=0.0,
             quality_score=0.0,
             value_score=0.0,
@@ -1391,7 +1391,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
             condition_win_rate=None,
             condition_sample_count=0,
             condition_confidence='LOW',
-            is_valid=False,  # [v5.0.1] 묻어가기 방지
+            is_valid=False,  # [v1.0] 묻어가기 방지
             invalid_reason=f'계산 오류: {str(e)[:30]}',
             details={'error': str(e)},
         )
@@ -1399,8 +1399,8 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
 
 def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cache=None, news_cache=None):
     """
-    [v5.0] Phase 1 Hunter - 정량 컨텍스트 포함 LLM 분석
-    [v5.1] 경쟁사 수혜 점수 반영 추가
+    [v1.0] Phase 1 Hunter - 정량 컨텍스트 포함 LLM 분석
+    [v1.0] 경쟁사 수혜 점수 반영 추가
     
     기존 Hunter와 달리, QuantScorer의 결과를 프롬프트에 포함하여
     LLM이 데이터 기반 판단을 하도록 유도합니다.
@@ -1413,7 +1413,7 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
     # 정량 컨텍스트 생성
     quant_context = format_quant_score_for_prompt(quant_result)
     
-    # [v5.1] 경쟁사 수혜 점수 조회
+    # [v1.0] 경쟁사 수혜 점수 조회
     competitor_benefit = database.get_competitor_benefit_score(code)
     competitor_bonus = competitor_benefit.get('score', 0)
     competitor_reason = competitor_benefit.get('reason', '')
@@ -1434,7 +1434,7 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
     
     news_from_chroma = news_cache.get(code, "최근 관련 뉴스 없음") if news_cache else "뉴스 캐시 없음"
     
-    # [v5.1] 경쟁사 수혜 정보를 뉴스에 추가
+    # [v1.0] 경쟁사 수혜 정보를 뉴스에 추가
     if competitor_bonus > 0:
         news_from_chroma += f"\n\n⚡ [경쟁사 수혜 기회] {competitor_reason} (+{competitor_bonus}점)"
     
@@ -1448,11 +1448,11 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
         'market_cap': snapshot.get('market_cap'),
     }
     
-    # [v5.0] 정량 컨텍스트 포함 Hunter 호출
+    # [v1.0] 정량 컨텍스트 포함 Hunter 호출
     hunter_result = brain.get_jennies_analysis_score_v5(decision_info, quant_context)
     hunter_score = hunter_result.get('score', 0)
     
-    # [v5.1] 경쟁사 수혜 가산점 적용 (최대 +10점)
+    # [v1.0] 경쟁사 수혜 가산점 적용 (최대 +10점)
     if competitor_bonus > 0:
         hunter_score = min(100, hunter_score + competitor_bonus)
         logger.info(f"   🎯 [경쟁사 수혜] {info['name']}({code}) +{competitor_bonus}점 가산 ({competitor_reason})")
@@ -1475,14 +1475,14 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
         'hunter_score': hunter_score,
         'hunter_reason': hunter_result.get('reason', ''),
         'passed': passed,
-        'competitor_bonus': competitor_bonus,  # [v5.1] 경쟁사 수혜 점수
+        'competitor_bonus': competitor_bonus,  # [v1.0] 경쟁사 수혜 점수
         'competitor_reason': competitor_reason,
     }
 
 
 def process_phase23_judge_v5_task(phase1_result, brain):
     """
-    [v5.0] Phase 2-3: Debate + Judge (정량 컨텍스트 포함)
+    [v1.0] Phase 2-3: Debate + Judge (정량 컨텍스트 포함)
     
     정량 분석 결과를 Judge 프롬프트에 포함하여
     하이브리드 점수를 산출합니다.
@@ -1509,7 +1509,7 @@ def process_phase23_judge_v5_task(phase1_result, brain):
     grade = judge_result.get('grade', 'D')
     reason = judge_result.get('reason', '분석 실패')
     
-    # [v5.0] 하이브리드 점수 계산 (정량 60% + 정성 40%)
+    # [v1.0] 하이브리드 점수 계산 (정량 60% + 정성 40%)
     # Gemini 설계의 안전장치: 차이 30점 이상시 보수적 가중치
     quant_score = quant_result.total_score
     llm_score = score
@@ -1633,7 +1633,7 @@ def process_phase1_hunter_task(stock_info, brain, snapshot_cache=None, news_cach
     hunter_result = brain.get_jennies_analysis_score(decision_info)
     hunter_score = hunter_result.get('score', 0)
     
-    # [v4.0] Phase 1 통과 기준: 60점 이상 (상위 40~50개, 약 20~25% 목표)
+    # [v1.0] Phase 1 통과 기준: 60점 이상 (상위 40~50개, 약 20~25% 목표)
     passed = hunter_score >= 60
     if passed:
         logger.info(f"   ✅ [Phase 1 통과] {info['name']}({code}) - Hunter: {hunter_score}점")
@@ -1673,7 +1673,7 @@ def process_phase23_debate_judge_task(phase1_result, brain):
     grade = judge_result.get('grade', 'D')
     reason = judge_result.get('reason', '분석 실패')
     
-    # [v4.0] 최종 판단 - Judge 승인 기준 완화 (60→50점)
+    # [v1.0] 최종 판단 - Judge 승인 기준 완화 (60→50점)
     is_tradable = score >= 75  # 강력 매수: 75점 이상 (A등급)
     approved = score >= 50     # Watchlist 등록: 50점 이상 (C등급 이상)
     
@@ -1755,7 +1755,7 @@ def process_llm_decision_task(stock_info, kis_api, brain):
         'momentum_score': momentum_value
     }
 
-    # [v4.0] Scout 3단계 파이프라인 적용
+    # [v1.0] Scout 3단계 파이프라인 적용
     
     # 1. Phase 1: Hunter (High Recall Filtering)
     # - 기존 분석 로직을 활용하되, 기준을 대폭 낮춰서(40점) 잠재력 있는 종목을 넓게 잡음
@@ -1792,7 +1792,7 @@ def process_llm_decision_task(stock_info, kis_api, brain):
     grade = judge_result.get('grade', 'D')
     reason = judge_result.get('reason', '분석 실패')
     
-    # [v4.0] 최종 판단 - Judge 승인 기준 완화 (60→50점)
+    # [v1.0] 최종 판단 - Judge 승인 기준 완화 (60→50점)
     is_tradable = score >= 75  # 강력 매수: 75점 이상 (A등급)
     approved = score >= 50     # Watchlist 등록: 50점 이상 (C등급 이상)
     
@@ -2047,11 +2047,11 @@ def main():
         )
         
         # =============================================================
-        # [v5.0] 하이브리드 스코어링 모드 분기
+        # [v1.0] 하이브리드 스코어링 모드 분기
         # =============================================================
-        if is_v5_enabled():
+        if is_hybrid_scoring_enabled():
             logger.info("=" * 60)
-            logger.info("   🚀 Scout v5.0 Hybrid Scoring Mode 활성화!")
+            logger.info("   🚀 Scout v1.0 Hybrid Scoring Mode 활성화!")
             logger.info("=" * 60)
             
             try:
@@ -2179,11 +2179,11 @@ def main():
                     )
                     final_approved_list = final_approved_list_sorted[:MAX_WATCHLIST_SIZE]
                 
-                logger.info(f"\n   🏁 Scout v5.0 완료: {len(final_approved_list)}개 종목 선정")
+                logger.info(f"\n   🏁 Scout v1.0 완료: {len(final_approved_list)}개 종목 선정")
                 _v5_completed = True
                 
             except Exception as e:
-                logger.error(f"❌ Scout v5.0 실행 오류, v4 모드로 폴백: {e}", exc_info=True)
+                logger.error(f"❌ Scout v1.0 실행 오류, v4 모드로 폴백: {e}", exc_info=True)
                 _v5_completed = False
         else:
             _v5_completed = False
@@ -2329,7 +2329,7 @@ def main():
                     else:
                         phase1_passed = phase1_passed_all
                     
-                    # [v4.0] Redis 상태 업데이트 - Phase 1 완료
+                    # [v1.0] Redis 상태 업데이트 - Phase 1 완료
                     update_pipeline_status(
                         phase=2, phase_name="Bull vs Bear Debate", status="running",
                         total_candidates=len(candidate_stocks),
@@ -2361,7 +2361,7 @@ def main():
                         phase23_time = time.time() - phase23_start
                         logger.info(f"   (LLM) [Pass 2] Phase 2-3 완료 ({phase23_time:.1f}초)")
                         
-                        # [v4.0] Redis 상태 업데이트 - Phase 2-3 완료
+                        # [v1.0] Redis 상태 업데이트 - Phase 2-3 완료
                         update_pipeline_status(
                             phase=3, phase_name="Final Judge", status="running",
                             total_candidates=len(candidate_stocks),
@@ -2398,7 +2398,7 @@ def main():
                 _save_llm_cache_batch(db_conn, new_cache_entries)
                 _save_last_llm_run_at(db_conn, _utcnow())
 
-            # [v4.0] Phase 3: 쿼터제 적용 (Top 15개만 저장) - 제니 피드백 반영
+            # [v1.0] Phase 3: 쿼터제 적용 (Top 15개만 저장) - 제니 피드백 반영
             MAX_WATCHLIST_SIZE = 15
             
             # 점수 기준 내림차순 정렬 후 상위 N개만 선택
@@ -2444,7 +2444,7 @@ def main():
         if tradable_codes:
             batch_update_watchlist_financial_data(db_conn, tradable_codes)
         
-        # [v4.0] Redis 최종 상태 업데이트 - 완료
+        # [v1.0] Redis 최종 상태 업데이트 - 완료
         update_pipeline_status(
             phase=3, phase_name="Final Judge", status="completed",
             progress=100,
@@ -2454,7 +2454,7 @@ def main():
             final_selected=len(final_approved_list)
         )
         
-        # [v4.0] Redis 결과 저장 (Dashboard에서 조회용)
+        # [v1.0] Redis 결과 저장 (Dashboard에서 조회용)
         pipeline_results = [
             {
                 "stock_code": s.get('code'),
@@ -2471,7 +2471,7 @@ def main():
 
     except Exception as e:
         logger.critical(f"❌ 'Scout Job' 실행 중 오류: {e}", exc_info=True)
-        # [v4.0] 오류 시 Redis 상태 업데이트
+        # [v1.0] 오류 시 Redis 상태 업데이트
         update_pipeline_status(phase=0, phase_name="Error", status="error")
     
     finally:

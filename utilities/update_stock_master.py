@@ -495,7 +495,7 @@ def main():
     logger.info("--- 🤖 종목 마스터 업데이트 시작 ---")
     db_conn = None
     try:
-        # [v5.0.6] MariaDB/Oracle 분기 처리
+        # [v1.0] MariaDB/Oracle 분기 처리
         if _is_mariadb():
             logger.info("   DB 타입: MariaDB")
             db_conn = database.get_db_connection(

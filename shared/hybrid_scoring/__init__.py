@@ -65,18 +65,18 @@ __all__ = [
     'QuantScorer',
     'HybridScorer', 
     'FactorAnalyzer',
-    'CompetitorAnalyzer',  # v5.1 신규
+    'CompetitorAnalyzer',  # v1.0
     
     # 결과 데이터 클래스
     'QuantScoreResult',
     'HybridScoreResult',
-    'CompetitorBenefitReport',  # v5.1 신규
-    'BenefitAnalysis',  # v5.1 신규
+    'CompetitorBenefitReport',  # v1.0
+    'BenefitAnalysis',  # v1.0
     
     # 파이프라인 함수
     'run_hybrid_scoring_pipeline',
     'run_weekly_factor_analysis',
-    'analyze_competitor_benefit',  # v5.1 신규
+    'analyze_competitor_benefit',  # v1.0
     
     # 유틸리티 함수
     'format_quant_score_for_prompt',
@@ -84,7 +84,7 @@ __all__ = [
     'get_default_factor_weights',
     'get_confidence_level',
     'get_confidence_weight',
-    'get_all_sectors',  # v5.1 신규
+    'get_all_sectors',  # v1.0
 ]
 
 __version__ = '1.0.0'

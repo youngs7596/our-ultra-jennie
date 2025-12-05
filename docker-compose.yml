@@ -108,14 +108,9 @@ services:
       - infrastructure/env-vars-wsl.yaml
     environment:
       - PORT=8095
-      - DB_TYPE=MARIADB
-      - MARIADB_HOST=127.0.0.1
-      - MARIADB_PORT=3306
-      - MARIADB_USER=root
-      - MARIADB_PASSWORD=q1w2e3R$
-      - MARIADB_DBNAME=jennie_db
       - RABBITMQ_URL=amqp://guest:guest@127.0.0.1:5672/
     volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
       - ./scheduler_data:/app/data
 
   scheduler-service-mock:
@@ -156,21 +151,7 @@ services:
       start_period: 10s
 
   # ============================================================================
-  # 2. Pub/Sub Emulator
-  # ============================================================================
-  pubsub-emulator:
-    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
-    container_name: pubsub-emulator
-    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085
-    network_mode: host
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8085" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ============================================================================
-  # 3. KIS Gateway
+  # 2. KIS Gateway (토큰 관리 및 API Rate Limiting)
   # ============================================================================
   kis-gateway:
     build:
@@ -221,7 +202,7 @@ services:
       retries: 3
 
   # ============================================================================
-  # 4. Buy Scanner
+  # 3. Buy Scanner (매수 신호 탐지)
   # ============================================================================
   buy-scanner:
     build:
@@ -260,16 +241,16 @@ services:
       - PORT=9081
       - SECRETS_FILE=/app/config/secrets.json
       - KIS_GATEWAY_URL=http://localhost:9080
-      - PUBSUB_EMULATOR_HOST=localhost:8085
+      - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
-      pubsub-emulator:
+      rabbitmq:
         condition: service_started
 
   # ============================================================================
-  # 5. Buy Executor
+  # 4. Buy Executor (매수 실행)
   # ============================================================================
   buy-executor:
     build:
@@ -308,16 +289,16 @@ services:
       - PORT=9082
       - SECRETS_FILE=/app/config/secrets.json
       - KIS_GATEWAY_URL=http://localhost:9080
-      - PUBSUB_EMULATOR_HOST=localhost:8085
+      - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
-      pubsub-emulator:
+      rabbitmq:
         condition: service_started
 
   # ============================================================================
-  # 6. Sell Executor
+  # 5. Sell Executor (매도 실행)
   # ============================================================================
   sell-executor:
     build:
@@ -364,7 +345,7 @@ services:
       rabbitmq:
         condition: service_started
   # ============================================================================
-  # 7. Price Monitor
+  # 6. Price Monitor (가격 모니터링)
   # ============================================================================
   price-monitor:
     build:
@@ -419,7 +400,7 @@ services:
         condition: service_started
 
   # ============================================================================
-  # 8. Daily Briefing
+  # 7. Daily Briefing (일일 브리핑)
   # ============================================================================
   daily-briefing:
     build:
@@ -464,7 +445,7 @@ services:
         condition: service_healthy
 
   # ============================================================================
-  # 9. Scout Job
+  # 8. Scout Job (종목 발굴)
   # ============================================================================
   scout-job:
     build:
@@ -511,7 +492,7 @@ services:
         condition: service_healthy
 
   # ============================================================================
-  # 10. News Crawler
+  # 9. News Crawler (뉴스 수집)
   # ============================================================================
   news-crawler:
     build:
@@ -558,13 +539,7 @@ services:
         condition: service_healthy
 
   # ============================================================================
-  # 11. RAG Cacher - [v3.9] 제거됨 (Scout가 직접 ChromaDB 조회)
-  # ============================================================================
-  # rag-cacher 서비스는 더 이상 사용하지 않습니다.
-  # Scout Job이 직접 ChromaDB에서 종목별 뉴스를 검색합니다.
-
-  # ============================================================================
-  # 🚀 Dashboard V2 - React + FastAPI (NEW!)
+  # 10. Dashboard V2 (React + FastAPI)
   # ============================================================================
   dashboard-v2-backend:
     build:
@@ -579,12 +554,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-my-supreme-jennie-jwt-secret-2025}
       - REDIS_URL=redis://127.0.0.1:6379/0
       - KIS_GATEWAY_URL=http://127.0.0.1:8080
-      - DB_TYPE=MARIADB
-      - MARIADB_HOST=127.0.0.1
-      - MARIADB_PORT=3306
-      - MARIADB_USER=root
-      - MARIADB_PASSWORD=q1w2e3R$
-      - MARIADB_DBNAME=jennie_db
+      - SECRETS_FILE=/app/config/secrets.json
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro

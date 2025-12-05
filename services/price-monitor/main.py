@@ -245,7 +245,7 @@ def handle_scheduler_job(payload: dict):
         job_msg.run_id,
     )
 
-    # [v5.1] "unknown"일 때도 환경변수 job_id 사용
+    # [v1.0] "unknown"일 때도 환경변수 job_id 사용
     effective_job_id = job_msg.job_id if job_msg.job_id and job_msg.job_id != "unknown" else _get_scheduler_job_id()
     
     try:

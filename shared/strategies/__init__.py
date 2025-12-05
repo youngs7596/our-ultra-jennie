@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scout v5.1 전략 모듈
+Scout v1.0 전략 모듈
 
 고급 트레이딩 전략들을 제공합니다.
 

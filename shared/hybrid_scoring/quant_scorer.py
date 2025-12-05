@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scout v5.1 QuantScorer - 정량 점수 계산 엔진 (Dual Track)
+Scout v1.0 QuantScorer - 정량 점수 계산 엔진 (Dual Track)
 
-[v5.1] 3 AI 합의 기반 전면 개편:
+[v1.0] 3 AI 합의 기반 전면 개편:
 - 단기 스나이퍼 (D+5): RSI 과매도 + 외국인 순매수 (승률 55.5%)
 - 장기 헌터 (D+60): 수주/실적 뉴스 눌림목 매수 (승률 72.7%)
 
@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 
 class StrategyMode(Enum):
     """
-    [v5.1] 투자 전략 모드
+    [v1.0] 투자 전략 모드
     
     SHORT_TERM (단기 스나이퍼): D+5 기준, RSI+외인 복합조건 중심
     LONG_TERM (장기 헌터): D+60 기준, 뉴스 눌림목 매수 중심
@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class QuantScoreResult:
     """
-    [v5.1] 정량 점수 결과 데이터 클래스 (Dual Track 지원)
+    [v1.0] 정량 점수 결과 데이터 클래스 (Dual Track 지원)
     
     단기/장기 전략별 점수를 분리하여 제공
     """
@@ -80,7 +80,7 @@ class QuantScoreResult:
     condition_sample_count: Optional[int]
     condition_confidence: str
     
-    # [v5.0.2] 뉴스 통계 정보
+    # [v1.0.2] 뉴스 통계 정보
     news_stat_win_rate: Optional[float] = None
     news_stat_sample_count: Optional[int] = None
     news_stat_confidence: str = "LOW"
@@ -89,20 +89,20 @@ class QuantScoreResult:
     rank: int = 0
     is_passed_filter: bool = False
     
-    # [v5.0.1] 데이터 유효성 플래그
+    # [v1.0.1] 데이터 유효성 플래그
     is_valid: bool = True
     invalid_reason: str = ""
     
-    # [v5.0.6] 복합조건 및 섹터 정보
+    # [v1.0.6] 복합조건 및 섹터 정보
     compound_bonus: float = 0.0
     compound_conditions: List[str] = None
     sector: str = '미분류'
     
-    # [v5.0.6] 장기 보유 추천 (D+60 호재 뉴스)
+    # [v1.0.6] 장기 보유 추천 (D+60 호재 뉴스)
     is_long_term_hold_recommended: bool = False
     
     # ==========================================================
-    # [v5.1] Dual Track 전략별 점수 (3 AI 합의)
+    # [v1.0] Dual Track 전략별 점수 (3 AI 합의)
     # ==========================================================
     
     # 단기 스나이퍼 (D+5) - RSI+외인 중심
@@ -143,7 +143,7 @@ class QuantScorer:
     - Gemini: 하위 50% 조기 탈락으로 비용 절감
     - GPT: 조건부 승률과 Recency Weighting 적용
     
-    [v5.0.6] 2025-12-05 팩터 분석 결과 반영:
+    [v1.0.6] 2025-12-05 팩터 분석 결과 반영:
     - 섹터별 RSI 차별화 (조선운송 60.9%, 금융 60.1% vs 건설기계 49.8%)
     - 복합조건(RSI+외인) 보너스 (55.5% 승률)
     - 장기(D+60) 뉴스 효과 반영 (수주 72.7%, 실적 64.8%)
@@ -153,7 +153,7 @@ class QuantScorer:
     DEFAULT_FILTER_CUTOFF = 0.5  # 하위 50% 탈락
     DEFAULT_HOLDING_DAYS = 5     # 승률 측정 기준 (D+5)
     
-    # [v5.0.6] 섹터별 RSI 효과 (팩터 분석 결과)
+    # [v1.0.6] 섹터별 RSI 효과 (팩터 분석 결과)
     # 적중률이 높은 섹터에서 RSI 가중치 상향
     SECTOR_RSI_MULTIPLIER = {
         '조선운송': 1.3,   # 60.9% 적중률 → 30% 가중치 상향
@@ -167,13 +167,13 @@ class QuantScorer:
         '건설기계': 0.7,   # 49.8% 적중률 → 30% 가중치 하향
     }
     
-    # [v5.0.6] 장기(D+60) 호재 뉴스 카테고리 (추격매수 말고 장기 보유)
+    # [v1.0.6] 장기(D+60) 호재 뉴스 카테고리 (추격매수 말고 장기 보유)
     # 수주: D+5 43.7% → D+60 72.7%
     # 실적: D+5 48.4% → D+60 64.8%
     NEWS_LONG_TERM_POSITIVE = {'수주', '실적', '배당'}
     
     # ==========================================================
-    # [v5.1] 전략별 가중치 (3 AI 합의 - D+60 기준 재설계)
+    # [v1.0] 전략별 가중치 (3 AI 합의 - D+60 기준 재설계)
     # ==========================================================
     
     # 단기 스나이퍼 가중치 (D+5 기준)
@@ -214,7 +214,7 @@ class QuantScorer:
     def __init__(self, db_conn=None, market_regime: str = 'SIDEWAYS', 
                  strategy_mode: StrategyMode = StrategyMode.DUAL):
         """
-        [v5.1] 초기화
+        [v1.0] 초기화
         
         Args:
             db_conn: DB 연결 객체 (FACTOR_METADATA, FACTOR_PERFORMANCE 조회용)
@@ -232,7 +232,7 @@ class QuantScorer:
         self._factor_performance_cache: Dict[str, Dict] = {}
         self._news_stats_cache: Dict[str, Dict] = {}
         
-        # [v5.0.6] 섹터 정보 캐시
+        # [v1.0.6] 섹터 정보 캐시
         self._sector_cache: Dict[str, str] = {}
         
         logger.info(f"✅ QuantScorer 초기화 완료 (시장국면: {market_regime}, 전략: {strategy_mode.value})")
@@ -411,7 +411,7 @@ class QuantScorer:
     
     def _get_stock_sector(self, stock_code: str) -> str:
         """
-        [v5.0.6] STOCK_MASTER에서 종목의 섹터 정보 로드
+        [v1.0.6] STOCK_MASTER에서 종목의 섹터 정보 로드
         
         Returns:
             섹터명 (없으면 '미분류')
@@ -450,7 +450,7 @@ class QuantScorer:
                                            foreign_net_buy: Optional[int],
                                            avg_volume: Optional[float] = None) -> Tuple[float, Dict]:
         """
-        [v5.0.6] 복합 조건 보너스 점수 계산
+        [v1.0.6] 복합 조건 보너스 점수 계산
         
         팩터 분석 결과:
         - RSI 과매도 + 외국인 순매수: 승률 55.5%, 평균수익률 1.10%
@@ -502,7 +502,7 @@ class QuantScorer:
         - 1개월 단기 모멘텀: 5점
         - 모멘텀 안정성: 5점
         
-        [v5.0.3] Claude Opus 4.5 피드백: KOSPI 벤치마크 폴백 로직 추가
+        [v1.0.3] Claude Opus 4.5 피드백: KOSPI 벤치마크 폴백 로직 추가
         - KOSPI 데이터 없으면 절대 모멘텀으로 계산 (중립 대신)
         """
         try:
@@ -510,7 +510,7 @@ class QuantScorer:
             total_score = 0.0
             
             # 1. 6개월 모멘텀 (15점)
-            # [v5.0.3] KOSPI 데이터 없으면 절대 모멘텀으로 폴백
+            # [v1.0.3] KOSPI 데이터 없으면 절대 모멘텀으로 폴백
             if len(daily_prices_df) >= 120:
                 stock_start = float(daily_prices_df['CLOSE_PRICE'].iloc[-120])
                 stock_end = float(daily_prices_df['CLOSE_PRICE'].iloc[-1])
@@ -530,7 +530,7 @@ class QuantScorer:
                     factors['relative_momentum_6m'] = round(relative_momentum_6m, 2)
                     factors['momentum_type'] = 'relative'
                 else:
-                    # [v5.0.3] 폴백: 절대 모멘텀 사용
+                    # [v1.0.3] 폴백: 절대 모멘텀 사용
                     absolute_momentum_6m = stock_return
                     
                     # -20% ~ +40%를 0~15점으로 연속 매핑 (상승에 더 긍정적)
@@ -547,7 +547,7 @@ class QuantScorer:
                 factors['momentum_6m_note'] = '데이터 부족 (120일 미만)'
             
             # 2. 1개월 단기 모멘텀 (5점)
-            # [v5.0.3] KOSPI 없어도 절대 모멘텀으로 계산
+            # [v1.0.3] KOSPI 없어도 절대 모멘텀으로 계산
             if len(daily_prices_df) >= 20:
                 stock_return_1m = (daily_prices_df['CLOSE_PRICE'].iloc[-1] / daily_prices_df['CLOSE_PRICE'].iloc[-20] - 1) * 100
                 
@@ -559,7 +559,7 @@ class QuantScorer:
                     momentum_1m_score = max(0, min(5, 2.5 + relative_momentum_1m * 0.25))
                     factors['relative_momentum_1m'] = round(relative_momentum_1m, 2)
                 else:
-                    # [v5.0.3] 폴백: 절대 모멘텀
+                    # [v1.0.3] 폴백: 절대 모멘텀
                     momentum_1m_score = max(0, min(5, 2.5 + stock_return_1m * 0.25))
                     factors['absolute_momentum_1m'] = round(stock_return_1m, 2)
                 
@@ -736,7 +736,7 @@ class QuantScorer:
         - RSI: 3점 (섹터별 가중치 적용)
         - 볼린저 밴드: 3점
         
-        [v5.0.6] 섹터별 RSI 가중치 적용:
+        [v1.0.6] 섹터별 RSI 가중치 적용:
         - 조선운송: x1.3 (60.9% 적중률)
         - 금융: x1.25 (60.1% 적중률)
         - 건설기계: x0.7 (49.8% 적중률)
@@ -783,7 +783,7 @@ class QuantScorer:
                 else:
                     rsi_score = max(0, 0.5 - (rsi - 70) * 0.025)
                 
-                # [v5.0.6] 섹터별 RSI 가중치 적용
+                # [v1.0.6] 섹터별 RSI 가중치 적용
                 sector_multiplier = self.SECTOR_RSI_MULTIPLIER.get(sector, 1.0)
                 rsi_score_adjusted = min(3.0, rsi_score * sector_multiplier)  # 최대 3점 유지
                 
@@ -845,7 +845,7 @@ class QuantScorer:
         except:
             return None
     
-    # [v5.0.5] 뉴스 역신호 카테고리 (팩터 분석 결과)
+    # [v1.0.5] 뉴스 역신호 카테고리 (팩터 분석 결과)
     # 수주: 43.7% 승률 (역신호)
     # 배당: 37.6% 승률 (강한 역신호)
     NEWS_REVERSE_SIGNAL_CATEGORIES = {'수주', '배당', '자사주', '주주환원'}
@@ -854,7 +854,7 @@ class QuantScorer:
                                       news_category: str,
                                       current_sentiment_score: float) -> Tuple[str, str, int]:
         """
-        [v5.1] 뉴스 기반 시간축 판단 (3 AI 합의)
+        [v1.0] 뉴스 기반 시간축 판단 (3 AI 합의)
         
         "뉴스 뜨면 단기 역신호, 장기 순신호"
         → 즉시 매수 금지, 눌림목 대기
@@ -918,7 +918,7 @@ class QuantScorer:
         """
         뉴스 통계 점수 계산 (15점 만점)
         
-        [v5.0.5] 팩터 분석 결과 반영:
+        [v1.0.5] 팩터 분석 결과 반영:
         - 전체 뉴스 승률 47.3% (역신호!)
         - 수주: 43.7%, 배당: 37.6% (강한 역신호)
         - "뉴스 보고 매수하면 고점에 물린다"
@@ -937,7 +937,7 @@ class QuantScorer:
             factors = {}
             total_score = 0.0
             
-            # [v5.0.5] 역신호 카테고리 체크
+            # [v1.0.5] 역신호 카테고리 체크
             is_reverse_signal = news_category in self.NEWS_REVERSE_SIGNAL_CATEGORIES
             
             # 1. 뉴스 통계 기반 점수 (7점) - 기존 10점에서 축소
@@ -950,7 +950,7 @@ class QuantScorer:
                 # 신뢰도 가중치 적용
                 confidence_weight = get_confidence_weight(news_stats['sample_count'])
                 
-                # [v5.0.5] 역신호 반영: 승률 50% 미만이면 패널티
+                # [v1.0.5] 역신호 반영: 승률 50% 미만이면 패널티
                 if win_rate < 0.5:
                     # 역신호: 승률 50% 미만 → 음수 점수 (-3점까지)
                     base_score = max(-3, (win_rate - 0.5) * 14)  # 37.6%면 약 -1.7점
@@ -977,7 +977,7 @@ class QuantScorer:
             # 0~100을 0~3점으로 변환
             sentiment_score = current_sentiment_score / 100 * 3
             
-            # [v5.0.5] 역신호 카테고리 패널티
+            # [v1.0.5] 역신호 카테고리 패널티
             if is_reverse_signal and current_sentiment_score >= 70:
                 # "뉴스 나왔으니 이미 늦었다" - 호재 뉴스에 패널티
                 sentiment_score = sentiment_score * 0.5  # 50% 감소
@@ -991,7 +991,7 @@ class QuantScorer:
             factors['sentiment_score'] = round(sentiment_score, 2)
             factors['is_reverse_signal'] = is_reverse_signal
             
-            # [v5.0.5] 최소 0점 보장 (패널티로 음수 되지 않도록)
+            # [v1.0.5] 최소 0점 보장 (패널티로 음수 되지 않도록)
             total_score = max(0, total_score)
             
             return total_score, factors
@@ -1013,7 +1013,7 @@ class QuantScorer:
         - 기관 순매수: 5점
         - 외국인 보유비중: 3점
         
-        [v5.0.3] Claude Opus 4.5 피드백: 종목별 거래량 대비 정규화 적용
+        [v1.0.3] Claude Opus 4.5 피드백: 종목별 거래량 대비 정규화 적용
         - 기존: 절대 주수 기준 (삼성전자와 소형주에 동일 기준)
         - 개선: 평균 거래량 대비 비율로 정규화
         """
@@ -1021,14 +1021,14 @@ class QuantScorer:
             factors = {}
             total_score = 0.0
             
-            # [v5.0.3] 거래량 대비 정규화 기준 설정
+            # [v1.0.3] 거래량 대비 정규화 기준 설정
             # avg_volume이 있으면 거래량 대비 비율로, 없으면 기존 절대값 방식
             use_volume_normalized = avg_volume is not None and avg_volume > 0
             
             # 1. 외국인 순매수 (7점)
             if foreign_net_buy is not None:
                 if use_volume_normalized:
-                    # [v5.0.3] 거래량 대비 비율로 정규화
+                    # [v1.0.3] 거래량 대비 비율로 정규화
                     # 평균 거래량의 -5% ~ +5%를 0~7점으로 매핑
                     foreign_ratio = foreign_net_buy / avg_volume
                     foreign_score = max(0, min(7, 3.5 + foreign_ratio / 0.05 * 3.5))
@@ -1050,7 +1050,7 @@ class QuantScorer:
             # 2. 기관 순매수 (5점)
             if institution_net_buy is not None:
                 if use_volume_normalized:
-                    # [v5.0.3] 거래량 대비 비율로 정규화
+                    # [v1.0.3] 거래량 대비 비율로 정규화
                     # 평균 거래량의 -3% ~ +3%를 0~5점으로 매핑
                     inst_ratio = institution_net_buy / avg_volume
                     institution_score = max(0, min(5, 2.5 + inst_ratio / 0.03 * 2.5))
@@ -1113,13 +1113,13 @@ class QuantScorer:
         - 뉴스 통계: 15점
         - 수급: 15점
         
-        [v5.0.1] Gemini 피드백 반영:
+        [v1.0.1] Gemini 피드백 반영:
         - 데이터 부족 시 is_valid=False 설정하여 "묻어가기" 합격 방지
         
         Returns:
             QuantScoreResult 객체
         """
-        # [v5.0.1] 필수 데이터 유효성 검사
+        # [v1.0.1] 필수 데이터 유효성 검사
         MIN_PRICE_DATA_DAYS = 30  # 최소 30일 데이터 필요
         
         if daily_prices_df is None or daily_prices_df.empty:
@@ -1183,7 +1183,7 @@ class QuantScorer:
             value_score, value_details = self.calculate_value_score(pbr, per)
             all_details['value'] = value_details
             
-            # [v5.0.6] 섹터 정보 조회 (RSI 가중치용)
+            # [v1.0.6] 섹터 정보 조회 (RSI 가중치용)
             sector = self._get_stock_sector(stock_code)
             
             # 4. 기술적 점수 (10점) - 섹터별 RSI 가중치 적용
@@ -1197,7 +1197,7 @@ class QuantScorer:
             all_details['news'] = news_details
             
             # 6. 수급 점수 (15점)
-            # [v5.0.3] 종목별 평균 거래량 계산 (정규화용)
+            # [v1.0.3] 종목별 평균 거래량 계산 (정규화용)
             avg_volume = None
             if 'VOLUME' in daily_prices_df.columns and len(daily_prices_df) >= 20:
                 avg_volume = daily_prices_df['VOLUME'].iloc[-20:].mean()
@@ -1207,7 +1207,7 @@ class QuantScorer:
             )
             all_details['supply_demand'] = supply_details
             
-            # [v5.0.6] 복합조건 보너스 계산
+            # [v1.0.6] 복합조건 보너스 계산
             rsi = technical_details.get('rsi')
             compound_bonus, compound_details = self.calculate_compound_condition_bonus(
                 rsi, foreign_net_buy, avg_volume
@@ -1222,10 +1222,10 @@ class QuantScorer:
                 technical_score +
                 news_stat_score +
                 supply_demand_score +
-                compound_bonus  # [v5.0.6] 복합조건 보너스
+                compound_bonus  # [v1.0.6] 복합조건 보너스
             )
             
-            # [v5.0.6] 장기 보유 추천 플래그
+            # [v1.0.6] 장기 보유 추천 플래그
             # 단기(D+5)에서는 역신호지만 장기(D+60)에서 호재인 뉴스
             is_long_term_hold_recommended = (
                 news_category in self.NEWS_LONG_TERM_POSITIVE and
@@ -1238,13 +1238,13 @@ class QuantScorer:
             factor_perf = self._load_factor_performance(stock_code)
             matched_conditions = [c['key'] for c in factor_perf['conditions']]
             
-            # [v5.0.2] 뉴스 통계 정보 추출 (GPT 피드백 반영)
+            # [v1.0.2] 뉴스 통계 정보 추출 (GPT 피드백 반영)
             news_win_rate = news_details.get('news_win_rate')
             news_sample = news_details.get('news_sample_count', 0)
             news_conf = news_details.get('news_confidence', 'LOW')
             
             # ==========================================================
-            # [v5.1] Dual Track 점수 계산 (3 AI 합의)
+            # [v1.0] Dual Track 점수 계산 (3 AI 합의)
             # ==========================================================
             
             # 뉴스 시간축 판단
@@ -1369,12 +1369,12 @@ class QuantScorer:
                 news_stat_win_rate=news_win_rate,
                 news_stat_sample_count=news_sample,
                 news_stat_confidence=news_conf,
-                # [v5.0.6] 복합조건 및 섹터
+                # [v1.0.6] 복합조건 및 섹터
                 compound_bonus=round(compound_bonus, 2),
                 compound_conditions=compound_details.get('compound_conditions_met', []),
                 sector=sector,
                 is_long_term_hold_recommended=is_long_term_hold_recommended,
-                # [v5.1] Dual Track 점수 (3 AI 합의)
+                # [v1.0] Dual Track 점수 (3 AI 합의)
                 short_term_score=round(short_term_score, 2),
                 short_term_grade=short_grade,
                 short_term_recommendation=short_rec,
@@ -1389,7 +1389,7 @@ class QuantScorer:
             
         except Exception as e:
             logger.error(f"   (QuantScorer) {stock_code} 종합 점수 계산 오류: {e}", exc_info=True)
-            # [v5.0.1] 예외 발생 시에도 is_valid=False 설정
+            # [v1.0.1] 예외 발생 시에도 is_valid=False 설정
             return QuantScoreResult(
                 stock_code=stock_code,
                 stock_name=stock_name,
@@ -1415,7 +1415,7 @@ class QuantScorer:
         """
         정량 점수 기준 1차 필터링 (하위 N% 탈락)
         
-        [v5.0.1] Gemini 피드백 반영:
+        [v1.0.1] Gemini 피드백 반영:
         - is_valid=False인 종목은 필터링에서 제외 (묻어가기 방지)
         
         Args:
@@ -1431,7 +1431,7 @@ class QuantScorer:
         if cutoff_ratio is None:
             cutoff_ratio = self.DEFAULT_FILTER_CUTOFF
         
-        # [v5.0.1] 유효한 결과만 필터링 대상으로 (묻어가기 방지)
+        # [v1.0.1] 유효한 결과만 필터링 대상으로 (묻어가기 방지)
         valid_results = [r for r in results if r.is_valid]
         invalid_results = [r for r in results if not r.is_valid]
         
@@ -1472,10 +1472,10 @@ class QuantScorer:
                           market_regime: str = 'ALL',
                           score_date: datetime = None) -> int:
         """
-        [v5.0.2] DAILY_QUANT_SCORE 테이블에 일별 점수 저장
+        [v1.0.2] DAILY_QUANT_SCORE 테이블에 일별 점수 저장
         
         GPT 피드백: "최종 선정된 종목을 DAILY_QUANT_SCORE에 저장하는 부분 미구현" 해결
-        [v5.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
+        [v1.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
         
         역추적(Backtrace)을 위한 점수 기록:
         - "Scout가 왜 이 종목을 뽑았지?" 추적 가능
@@ -1552,7 +1552,7 @@ class QuantScorer:
                              hybrid_results: List,  # HybridScoreResult
                              score_date: datetime = None) -> int:
         """
-        [v5.0.2] DAILY_QUANT_SCORE에 하이브리드 점수 업데이트
+        [v1.0.2] DAILY_QUANT_SCORE에 하이브리드 점수 업데이트
         
         최종 하이브리드 스코어링 결과를 기존 레코드에 업데이트
         
@@ -1608,14 +1608,14 @@ class QuantScorer:
 
 def format_quant_score_for_prompt(result: QuantScoreResult) -> str:
     """
-    [v5.1] LLM 프롬프트용 정량 점수 요약 포맷팅 (Dual Track)
+    [v1.0] LLM 프롬프트용 정량 점수 요약 포맷팅 (Dual Track)
     
     3 AI 합의 기반:
     - 단기/장기 전략별 점수와 추천 분리 표시
     - 뉴스 시간축 신호 명시 (WAIT_DIP, BUY_NOW 등)
     - LLM이 "지금 사면 안 된다"는 것을 명확히 인지하도록
     """
-    # [v5.0.1] 데이터 부족 경고
+    # [v1.0.1] 데이터 부족 경고
     if not result.is_valid:
         return f"""
 [⚠️ 정량 분석 불가 - 데이터 부족]
@@ -1628,10 +1628,10 @@ def format_quant_score_for_prompt(result: QuantScoreResult) -> str:
    뉴스와 펀더멘털을 신중하게 평가하고, 보수적으로 판단하세요.
 """.strip()
     
-    # [v5.1] Dual Track 전략별 표시
+    # [v1.0] Dual Track 전략별 표시
     dual_track_info = f"""
 ╔══════════════════════════════════════════════════════════╗
-║  🎯 Dual Track 전략 분석 (v5.1)                          ║
+║  🎯 Dual Track 전략 분석 (v1.0)                          ║
 ╠══════════════════════════════════════════════════════════╣
 ║  [단기 스나이퍼 D+5]          [장기 헌터 D+60]            ║
 ║  점수: {result.short_term_score:5.1f}점 ({result.short_term_grade})            점수: {result.long_term_score:5.1f}점 ({result.long_term_grade})             ║
@@ -1670,7 +1670,7 @@ def format_quant_score_for_prompt(result: QuantScoreResult) -> str:
         compound_info = f"\n🎯 복합조건 충족 (RSI+외인): +{result.compound_bonus}점 → 단기 스나이퍼 전략 유효!"
     
     summary = f"""
-[정량 분석 결과 - Scout v5.1]
+[정량 분석 결과 - Scout v1.0]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 종목: {result.stock_name} ({result.stock_code})
 섹터: {result.sector}

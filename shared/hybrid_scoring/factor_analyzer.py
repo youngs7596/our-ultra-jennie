@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scout v5.0.2 FactorAnalyzer - 오프라인 팩터 분석 배치 작업
+Scout v1.0 FactorAnalyzer - 오프라인 팩터 분석 배치 작업
 
 역할: Scout의 '지능'을 업데이트하는 주기적 배치 작업 (주 1회)
 
@@ -9,10 +9,10 @@ Scout v5.0.2 FactorAnalyzer - 오프라인 팩터 분석 배치 작업
 1. 팩터 예측력 분석: IC(Information Coefficient), IR(Information Ratio) 계산
 2. 조건부 승률 분석: "외국인 순매수 + 뉴스점수 70↑" → 승률 80%
 3. 뉴스 영향도 분석: 카테고리별 D+5 승률, 평균 수익률
-4. [v5.0.2] 재무 데이터(PER/PBR/ROE) DB 연동
-5. [v5.0.2] 뉴스+수급 복합 조건 분석
-6. [v5.0.2] NEWS_FACTOR_STATS 테이블 채우기
-7. [v5.0.2] Recency Weighting 가중치 반영
+4. [v1.0.2] 재무 데이터(PER/PBR/ROE) DB 연동
+5. [v1.0.2] 뉴스+수급 복합 조건 분석
+6. [v1.0.2] NEWS_FACTOR_STATS 테이블 채우기
+7. [v1.0.2] Recency Weighting 가중치 반영
 
 분석 결과는 DB에 저장되어 QuantScorer에서 활용됩니다.
 
@@ -125,14 +125,14 @@ class FactorAnalyzer:
 
     DISCLOSURE_TABLE = 'STOCK_DISCLOSURES'
     
-    # [v5.0.5] 시장 국면 정의
+    # [v1.0.5] 시장 국면 정의
     MARKET_REGIME_THRESHOLDS = {
         'BULL': 0.10,      # 6개월 수익률 +10% 이상
         'BEAR': -0.10,     # 6개월 수익률 -10% 이하
         'SIDEWAYS': 0.0,   # 그 사이
     }
     
-    # [v5.0.5] 종목 그룹 분류 (시가총액 기준)
+    # [v1.0.5] 종목 그룹 분류 (시가총액 기준)
     STOCK_GROUP_THRESHOLDS = {
         'LARGE': 10_000_000_000_000,   # 10조 이상: 대형주
         'MID': 1_000_000_000_000,      # 1조 이상: 중형주
@@ -151,7 +151,7 @@ class FactorAnalyzer:
         # 테이블 생성 확인
         create_hybrid_scoring_tables(db_conn)
         
-        # [v5.0.5] 시장 국면 캐시
+        # [v1.0.5] 시장 국면 캐시
         self._market_regime_cache = None
         self._stock_group_cache = {}
         
@@ -159,7 +159,7 @@ class FactorAnalyzer:
     
     def detect_market_regime(self, lookback_days: int = 120) -> str:
         """
-        [v5.0.5] 현재 시장 국면 감지
+        [v1.0.5] 현재 시장 국면 감지
         
         KOSPI 200 지수의 최근 6개월 수익률로 판단:
         - BULL: +10% 이상
@@ -215,7 +215,7 @@ class FactorAnalyzer:
     
     def classify_stock_group(self, stock_code: str) -> str:
         """
-        [v5.0.5] 종목 그룹 분류 (시가총액 기준)
+        [v1.0.5] 종목 그룹 분류 (시가총액 기준)
         
         Returns:
             'LARGE', 'MID', 'SMALL'
@@ -253,7 +253,7 @@ class FactorAnalyzer:
             logger.debug(f"   종목 그룹 분류 실패 ({stock_code}): {e}")
             return 'SMALL'
     
-    # [v5.0.6 Phase B] 섹터 분류
+    # [v1.0.6 Phase B] 섹터 분류
     SECTOR_MAPPING = {
         # KOSPI200 섹터 코드 매핑
         '반도체': ['005930', '000660', '034730', '042700'],  # 삼성전자, SK하이닉스 등
@@ -268,7 +268,7 @@ class FactorAnalyzer:
     
     def get_stock_sector(self, stock_code: str) -> str:
         """
-        [v5.0.6 Phase B] 종목의 섹터 분류
+        [v1.0.6 Phase B] 종목의 섹터 분류
         
         STOCK_MASTER의 SECTOR_KOSPI200 또는 INDUSTRY_CODE 기반
         """
@@ -313,7 +313,7 @@ class FactorAnalyzer:
     
     def group_stocks_by_sector(self, stock_codes: List[str]) -> Dict[str, List[str]]:
         """
-        [v5.0.6 Phase B] 종목들을 섹터별로 그룹화
+        [v1.0.6 Phase B] 종목들을 섹터별로 그룹화
         """
         sector_groups = {}
         
@@ -330,7 +330,7 @@ class FactorAnalyzer:
                           factor_key: str = 'technical_rsi_oversold',
                           forward_days: int = 5) -> Dict[str, Dict]:
         """
-        [v5.0.6 Phase B] 섹터별 팩터 분석
+        [v1.0.6 Phase B] 섹터별 팩터 분석
         
         Returns:
             {sector: {ic_mean, hit_rate, sample_count, ...}}
@@ -496,7 +496,7 @@ class FactorAnalyzer:
         if len(valid) < 30:
             return 0.0, 1.0, 0.0
         
-        # [v5.0.4] 팩터 값이 상수인지 확인 (상수면 상관계수 계산 불가)
+        # [v1.0.4] 팩터 값이 상수인지 확인 (상수면 상관계수 계산 불가)
         if valid['factor'].nunique() <= 1:
             logger.debug("   (FactorAnalyzer) 팩터 값이 상수입니다. IC=0 반환")
             return 0.0, 1.0, 0.0
@@ -504,7 +504,7 @@ class FactorAnalyzer:
         # 순위 상관계수 (Spearman) 사용
         ic = valid['factor'].corr(valid['return'], method='spearman')
         
-        # [v5.0.4] NaN 처리
+        # [v1.0.4] NaN 처리
         if pd.isna(ic):
             logger.debug("   (FactorAnalyzer) IC가 NaN입니다. IC=0 반환")
             return 0.0, 1.0, 0.0
@@ -683,7 +683,7 @@ class FactorAnalyzer:
     
     def _sanitize_for_db(self, value):
         """
-        [v5.0.3] DB 저장을 위해 NaN/inf 값을 None으로 변환
+        [v1.0.3] DB 저장을 위해 NaN/inf 값을 None으로 변환
         """
         import math
         if value is None:
@@ -697,8 +697,8 @@ class FactorAnalyzer:
         """
         팩터 분석 결과를 FACTOR_METADATA에 저장
         
-        [v5.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
-        [v5.0.4] NaN/inf 값을 None으로 변환하여 MySQL 호환성 확보
+        [v1.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
+        [v1.0.4] NaN/inf 값을 None으로 변환하여 MySQL 호환성 확보
         """
         try:
             cursor = self.db_conn.cursor()
@@ -738,7 +738,7 @@ class FactorAnalyzer:
         """
         조건부 성과 결과를 FACTOR_PERFORMANCE에 저장
         
-        [v5.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
+        [v1.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
         """
         try:
             cursor = self.db_conn.cursor()
@@ -781,15 +781,15 @@ class FactorAnalyzer:
             return False
     
     # =========================================================================
-    # [v5.0.2] GPT 피드백 반영 - 신규 기능
+    # [v1.0.2] GPT 피드백 반영 - 신규 기능
     # =========================================================================
     
     def _get_financial_data(self, stock_codes: List[str]) -> Dict[str, Dict]:
         """
-        [v5.0.3] 종목별 분기별 재무 데이터(PER/PBR/ROE) DB에서 조회
+        [v1.0.3] 종목별 분기별 재무 데이터(PER/PBR/ROE) DB에서 조회
         
         GPT 피드백: "PER/PBR/ROE 데이터 입력 없음" 해결
-        [v5.0.3] FINANCIAL_METRICS_QUARTERLY 테이블에서 분기별 데이터 조회
+        [v1.0.3] FINANCIAL_METRICS_QUARTERLY 테이블에서 분기별 데이터 조회
         
         Returns:
             {stock_code: {quarter_date_str: {'per': float, 'pbr': float, 'roe': float}}}
@@ -860,7 +860,7 @@ class FactorAnalyzer:
     
     def _get_financial_at_date(self, financial_data: Dict, stock_code: str, target_date) -> Dict:
         """
-        [v5.0.3] 특정 날짜에 해당하는 분기의 재무 데이터 반환
+        [v1.0.3] 특정 날짜에 해당하는 분기의 재무 데이터 반환
         
         Args:
             financial_data: _get_financial_data()의 반환값
@@ -904,7 +904,7 @@ class FactorAnalyzer:
     
     def _get_supply_demand_data(self, stock_codes: List[str], days: int = 504) -> Dict[str, pd.DataFrame]:
         """
-        [v5.0.2] 종목별 외국인/기관 수급 데이터 조회
+        [v1.0.2] 종목별 외국인/기관 수급 데이터 조회
         
         GPT 피드백: "외국인/기관 수급 조건 분석" 추가
         
@@ -953,7 +953,7 @@ class FactorAnalyzer:
     
     def _get_news_sentiment_history(self, stock_codes: List[str], days: int = 504) -> Dict[str, pd.DataFrame]:
         """
-        [v5.0.2] 종목별 뉴스 감성 점수 히스토리 조회
+        [v1.0.2] 종목별 뉴스 감성 점수 히스토리 조회
         
         GPT 피드백: "뉴스 카테고리별 승률" 분석을 위한 데이터 로드
         
@@ -998,7 +998,7 @@ class FactorAnalyzer:
                                      stock_codes: List[str],
                                      forward_days: int = 5) -> List[Dict]:
         """
-        [v5.0.2] 뉴스 카테고리별 D+N 승률 및 평균 수익률 분석
+        [v1.0.2] 뉴스 카테고리별 D+N 승률 및 평균 수익률 분석
         
         GPT 피드백: "뉴스 영향도 분석 미구현" 해결
         NEWS_FACTOR_STATS 테이블에 저장할 데이터 생성
@@ -1006,7 +1006,7 @@ class FactorAnalyzer:
         Returns:
             [{'category': str, 'win_rate': float, 'avg_return': float, ...}]
         """
-        logger.info(f"   [v5.0.2] 뉴스 카테고리별 영향도 분석 시작 ({len(stock_codes)}개 종목)")
+        logger.info(f"   [v1.0.2] 뉴스 카테고리별 영향도 분석 시작 ({len(stock_codes)}개 종목)")
         
         price_data = self._get_historical_prices(stock_codes)
         news_data = self._get_news_sentiment_history(stock_codes)
@@ -1030,7 +1030,7 @@ class FactorAnalyzer:
             # 미래 수익률 계산
             forward_returns = self._calculate_forward_returns(prices_df, forward_days)
             
-            # [v5.0.4] PRICE_DATE를 date로 변환 (datetime → date)
+            # [v1.0.4] PRICE_DATE를 date로 변환 (datetime → date)
             if 'PRICE_DATE' in prices_df.columns:
                 prices_df = prices_df.copy()
                 prices_df['PRICE_DATE_ONLY'] = pd.to_datetime(prices_df['PRICE_DATE']).dt.date
@@ -1044,7 +1044,7 @@ class FactorAnalyzer:
                 if category not in category_stats:
                     category = 'ALL'
                 
-                # [v5.0.4] datetime을 date로 변환하여 비교
+                # [v1.0.4] datetime을 date로 변환하여 비교
                 if hasattr(news_date_raw, 'date'):
                     news_date = news_date_raw.date()
                 elif hasattr(news_date_raw, 'strftime'):
@@ -1076,7 +1076,7 @@ class FactorAnalyzer:
                     category_stats[category]['returns'].append(ret)
                     category_stats['ALL']['returns'].append(ret)
                     
-                    # [v5.0.4] recent_cutoff 비교도 date로 통일
+                    # [v1.0.4] recent_cutoff 비교도 date로 통일
                     if hasattr(news_date_raw, 'date'):
                         compare_date = news_date_raw
                     else:
@@ -1100,7 +1100,7 @@ class FactorAnalyzer:
             
             recent_win_rate = (np.array(recent_returns) > 0).mean() if len(recent_returns) > 0 else win_rate
             
-            # [v5.0.2] Recency Weighting 적용
+            # [v1.0.2] Recency Weighting 적용
             recency_weight = self._calculate_recency_weight(len(returns), len(recent_returns), recent_win_rate, win_rate)
             
             result = {
@@ -1129,12 +1129,12 @@ class FactorAnalyzer:
                                   forward_days: int = 5,
                                   lookback_days: int = 365) -> List[Dict]:
         """
-        [v5.0.3] DART 공시 기반 영향도 분석
+        [v1.0.3] DART 공시 기반 영향도 분석
 
         - STOCK_DISCLOSURES 테이블을 조회하여 카테고리별 승률 계산
         - NEWS_FACTOR_STATS에 '공시:<카테고리>' 형태로 저장
         """
-        logger.info(f"   [v5.0.3] 공시 영향도 분석 시작 ({len(stock_codes)}개 종목, lookback={lookback_days}일)")
+        logger.info(f"   [v1.0.3] 공시 영향도 분석 시작 ({len(stock_codes)}개 종목, lookback={lookback_days}일)")
 
         disclosures = self._fetch_disclosures(stock_codes, lookback_days)
         price_data = self._get_historical_prices(stock_codes, days=max(lookback_days + 60, 250))
@@ -1209,7 +1209,7 @@ class FactorAnalyzer:
 
     def _fetch_disclosures(self, stock_codes: List[str], lookback_days: int = 365) -> Dict[str, List[Dict]]:
         """
-        [v5.0.3] STOCK_DISCLOSURES 테이블에서 공시 데이터 로드
+        [v1.0.3] STOCK_DISCLOSURES 테이블에서 공시 데이터 로드
         """
         logger.info(f"   (FactorAnalyzer) 공시 데이터 로드 ({lookback_days}일)")
         cursor = self.db_conn.cursor()
@@ -1256,7 +1256,7 @@ class FactorAnalyzer:
                                   recent_win_rate: float,
                                   total_win_rate: float) -> float:
         """
-        [v5.0.2] Recency Weighting 계산
+        [v1.0.2] Recency Weighting 계산
         
         GPT 피드백: "Recency Weighting 반영 부족" 해결
         
@@ -1286,10 +1286,10 @@ class FactorAnalyzer:
     
     def _save_news_factor_stats(self, result: Dict) -> bool:
         """
-        [v5.0.2] NEWS_FACTOR_STATS 테이블에 뉴스 영향도 저장
+        [v1.0.2] NEWS_FACTOR_STATS 테이블에 뉴스 영향도 저장
         
         GPT 피드백: "NEWS_FACTOR_STATS 테이블을 채우기 위한 분석 로직" 구현
-        [v5.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
+        [v1.0.3] Claude Opus 4.5 피드백: Oracle MERGE INTO 호환성 추가
         """
         try:
             cursor = self.db_conn.cursor()
@@ -1329,7 +1329,7 @@ class FactorAnalyzer:
     
     def analyze_compound_conditions(self, stock_codes: List[str]) -> List[ConditionPerformance]:
         """
-        [v5.0.2] 복합 조건 분석 (뉴스점수 70↑ + 외국인 순매수 등)
+        [v1.0.2] 복합 조건 분석 (뉴스점수 70↑ + 외국인 순매수 등)
         
         GPT 피드백: "뉴스 및 수급 조건 분석 미흡" 해결
         
@@ -1339,7 +1339,7 @@ class FactorAnalyzer:
         3. RSI 과매도 + 외국인 순매수
         4. 거래량 급증 + 외국인 순매수
         """
-        logger.info(f"   [v5.0.2] 복합 조건 분석 시작 ({len(stock_codes)}개 종목)")
+        logger.info(f"   [v1.0.2] 복합 조건 분석 시작 ({len(stock_codes)}개 종목)")
         
         results = []
         
@@ -1451,7 +1451,7 @@ class FactorAnalyzer:
         if news_df.empty or supply_df.empty:
             return condition_dates
         
-        # [v5.0.5] 날짜 형식 정규화
+        # [v1.0.5] 날짜 형식 정규화
         if 'TRADE_DATE' not in supply_df.columns:
             return condition_dates
         
@@ -1469,7 +1469,7 @@ class FactorAnalyzer:
             if sentiment < threshold:
                 continue
             
-            # [v5.0.5] 뉴스 날짜도 date로 변환
+            # [v1.0.5] 뉴스 날짜도 date로 변환
             news_date = news_date_raw.date() if hasattr(news_date_raw, 'date') else news_date_raw
             
             # 해당 날짜 외국인 순매수 확인
@@ -1494,7 +1494,7 @@ class FactorAnalyzer:
         if news_df.empty or supply_df.empty:
             return condition_dates
         
-        # [v5.0.5] 날짜 형식 정규화
+        # [v1.0.5] 날짜 형식 정규화
         if 'TRADE_DATE' not in supply_df.columns:
             return condition_dates
         
@@ -1533,7 +1533,7 @@ class FactorAnalyzer:
         if supply_df.empty or len(prices_df) < 20:
             return condition_dates
         
-        # [v5.0.5] 수급 데이터 날짜 인덱싱
+        # [v1.0.5] 수급 데이터 날짜 인덱싱
         if 'TRADE_DATE' not in supply_df.columns:
             return condition_dates
         
@@ -1581,7 +1581,7 @@ class FactorAnalyzer:
         if supply_df.empty or 'VOLUME' not in prices_df.columns or len(prices_df) < 25:
             return condition_dates
         
-        # [v5.0.5] 수급 데이터 날짜 인덱싱
+        # [v1.0.5] 수급 데이터 날짜 인덱싱
         if 'TRADE_DATE' not in supply_df.columns:
             return condition_dates
         
@@ -1623,7 +1623,7 @@ class FactorAnalyzer:
         if news_df.empty or supply_df.empty:
             return condition_dates
         
-        # [v5.0.5] 날짜 형식 정규화
+        # [v1.0.5] 날짜 형식 정규화
         if 'TRADE_DATE' not in supply_df.columns:
             return condition_dates
         
@@ -1664,10 +1664,10 @@ class FactorAnalyzer:
                                        factor_key: str,
                                        forward_days: int = 5) -> FactorAnalysisResult:
         """
-        [v5.0.3] 재무 데이터를 포함한 팩터 분석 (시점별 매칭)
+        [v1.0.3] 재무 데이터를 포함한 팩터 분석 (시점별 매칭)
         
         GPT 피드백: "PER/PBR/ROE 데이터 입력 없음" 해결
-        [v5.0.3] 각 날짜에 해당하는 분기의 PER/PBR/ROE 사용
+        [v1.0.3] 각 날짜에 해당하는 분기의 PER/PBR/ROE 사용
         """
         factor_def = self.FACTOR_DEFINITIONS.get(factor_key)
         if not factor_def:
@@ -1690,7 +1690,7 @@ class FactorAnalyzer:
             calc_func = getattr(self, factor_def['calc_func'])
             
             if factor_key in ['value_per', 'value_pbr', 'quality_roe']:
-                # [v5.0.3] 시점별 재무 데이터 매칭
+                # [v1.0.3] 시점별 재무 데이터 매칭
                 factor_values = []
                 valid_indices = []
                 
@@ -1791,7 +1791,7 @@ class FactorAnalyzer:
         """
         전체 팩터 분석 실행 (배치 작업)
         
-        [v5.0.2] GPT 피드백 반영:
+        [v1.0.2] GPT 피드백 반영:
         - 재무 데이터(PER/PBR/ROE) 연동 팩터 분석
         - 뉴스 카테고리별 영향도 분석
         - 복합 조건 분석 (뉴스+수급)
@@ -1809,7 +1809,7 @@ class FactorAnalyzer:
         self.lookback_days = lookback_days
         self.force_refresh = force_refresh
         logger.info("=" * 60)
-        logger.info("   🔬 FactorAnalyzer 전체 분석 시작 (v5.0.2)")
+        logger.info("   🔬 FactorAnalyzer 전체 분석 시작 (v1.0.2)")
         logger.info("=" * 60)
         
         start_time = datetime.now()
@@ -1837,7 +1837,7 @@ class FactorAnalyzer:
         for factor_key in self.FACTOR_DEFINITIONS.keys():
             try:
                 if factor_key in financial_factors:
-                    # [v5.0.2] 재무 데이터 포함 분석
+                    # [v1.0.2] 재무 데이터 포함 분석
                     result = self.analyze_factor_with_financials(stock_codes, factor_key)
                 else:
                     result = self.analyze_factor(stock_codes, factor_key)
@@ -1885,7 +1885,7 @@ class FactorAnalyzer:
                 except Exception as e:
                     logger.debug(f"   {code}/{cond_key} 분석 실패: {e}")
         
-        # 3. [v5.0.2] 뉴스 카테고리별 영향도 분석
+        # 3. [v1.0.2] 뉴스 카테고리별 영향도 분석
         logger.info("\n   [Step 3] 뉴스 카테고리별 영향도 분석")
         try:
             news_results = self.analyze_news_category_impact(stock_codes)
@@ -1894,7 +1894,7 @@ class FactorAnalyzer:
             logger.error(f"   ❌ 뉴스 카테고리 분석 실패: {e}")
             results['errors'].append({'step': 'news_category', 'error': str(e)})
         
-        # 4. [v5.0.2] 복합 조건 분석 (뉴스+수급)
+        # 4. [v1.0.2] 복합 조건 분석 (뉴스+수급)
         logger.info("\n   [Step 4] 복합 조건 분석 (뉴스+수급)")
         try:
             compound_results = self.analyze_compound_conditions(stock_codes)
@@ -1903,7 +1903,7 @@ class FactorAnalyzer:
             logger.error(f"   ❌ 복합 조건 분석 실패: {e}")
             results['errors'].append({'step': 'compound_conditions', 'error': str(e)})
 
-        # 5. [v5.0.3] 공시 영향도 분석
+        # 5. [v1.0.3] 공시 영향도 분석
         logger.info("\n   [Step 5] 공시 영향도 분석 (DART)")
         try:
             disclosure_results = self.analyze_disclosure_impact(stock_codes)
@@ -1912,7 +1912,7 @@ class FactorAnalyzer:
             logger.error(f"   ❌ 공시 영향도 분석 실패: {e}")
             results['errors'].append({'step': 'disclosure', 'error': str(e)})
         
-        # 6. [v5.0.6 Phase B] 장기 수익률 분석 (D+20, D+60)
+        # 6. [v1.0.6 Phase B] 장기 수익률 분석 (D+20, D+60)
         logger.info("\n   [Step 6] 장기 수익률 분석 (D+20, D+60)")
         results['long_term_analysis'] = {
             'D+20': [],
@@ -1961,7 +1961,7 @@ class FactorAnalyzer:
             logger.error(f"   ❌ D+60 분석 실패: {e}")
             results['errors'].append({'step': 'long_term_d60', 'error': str(e)})
         
-        # 7. [v5.0.6 Phase B] 뉴스 카테고리 장기 수익률 분석
+        # 7. [v1.0.6 Phase B] 뉴스 카테고리 장기 수익률 분석
         logger.info("\n   [Step 7] 뉴스 카테고리 장기 수익률 분석")
         results['news_long_term'] = {}
         
@@ -1979,7 +1979,7 @@ class FactorAnalyzer:
                 logger.error(f"   ❌ 뉴스 D+{forward_days} 분석 실패: {e}")
                 results['errors'].append({'step': f'news_d{forward_days}', 'error': str(e)})
         
-        # 8. [v5.0.6 Phase B] 섹터별 분리 분석
+        # 8. [v1.0.6 Phase B] 섹터별 분리 분석
         logger.info("\n   [Step 8] 섹터별 분리 분석")
         results['sector_analysis'] = {}
         
@@ -2006,7 +2006,7 @@ class FactorAnalyzer:
         elapsed = (datetime.now() - start_time).total_seconds()
         
         logger.info("\n" + "=" * 60)
-        logger.info(f"   🏁 FactorAnalyzer 분석 완료 (v5.0.6 Phase B, {elapsed:.1f}초)")
+        logger.info(f"   🏁 FactorAnalyzer 분석 완료 (v1.0.6 Phase B, {elapsed:.1f}초)")
         logger.info(f"   - 팩터 분석 (D+5): {len(results['factor_analysis'])}개")
         logger.info(f"   - 기본 조건 분석: {len(results['condition_analysis'])}개")
         logger.info(f"   - 뉴스 카테고리 분석 (D+5): {len(results['news_category_analysis'])}개")
@@ -2018,7 +2018,7 @@ class FactorAnalyzer:
         logger.info(f"   - 오류: {len(results['errors'])}개")
         logger.info("=" * 60)
         
-        # [v5.0.5] 상세 요약 출력
+        # [v1.0.5] 상세 요약 출력
         if results['factor_analysis']:
             logger.info("\n📊 [팩터별 요약]")
             for factor in results['factor_analysis']:
@@ -2062,7 +2062,7 @@ class FactorAnalyzer:
             return []
     
     # =========================================================================
-    # [v5.0.5] 백테스트 시뮬레이션
+    # [v1.0.5] 백테스트 시뮬레이션
     # =========================================================================
     
     def run_backtest(self, 
@@ -2072,7 +2072,7 @@ class FactorAnalyzer:
                      top_n: int = 15,
                      holding_days: int = 5) -> Dict:
         """
-        [v5.0.5] 간단한 백테스트 시뮬레이션
+        [v1.0.5] 간단한 백테스트 시뮬레이션
         
         새로운 가중치와 전략으로 과거 데이터에서 시뮬레이션:
         1. 매일 정량 점수 상위 N개 종목 선정
@@ -2090,7 +2090,7 @@ class FactorAnalyzer:
             백테스트 결과 딕셔너리
         """
         logger.info("\n" + "=" * 60)
-        logger.info("   🧪 백테스트 시뮬레이션 시작 (v5.0.5)")
+        logger.info("   🧪 백테스트 시뮬레이션 시작 (v1.0.5)")
         logger.info("=" * 60)
         
         if stock_codes is None:
