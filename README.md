@@ -41,7 +41,7 @@
 
 | 기능 | 설명 |
 |------|------|
-| 🧠 **멀티 LLM 판단** | Gemini(Scout) → Claude(Hunter) → OpenAI(Judge) 3단계 심사 |
+| 🧠 **멀티 LLM 판단** | QuantScorer(정량) → Claude(Hunter) → OpenAI(Judge) 다단계 심사 |
 | 📊 **하이브리드 스코어링** | 정량 팩터(60%) + LLM 정성 분석(40%) 결합 |
 | 🎯 **경쟁사 수혜 분석** | 경쟁사 악재 발생 시 반사이익 자동 포착 |
 | 📰 **실시간 뉴스 분석** | 뉴스 감성 분석 및 카테고리 자동 분류 |
@@ -60,15 +60,19 @@ KOSPI 200 Universe
 [Phase 1] Quant Scoring (정량 분석)
    - 모멘텀, 가치, 수급, 기술적 지표
    - 비용: $0 (LLM 미사용)
+   - 상위 30개 종목 선별
        ↓
 [Phase 2] Hunter Analysis (Claude)
-   - 기본점수 + 경쟁사 수혜 가산
+   - 펀더멘털 + 뉴스 RAG 분석
+   - 경쟁사 수혜 점수 가산
    - 통과 기준: 60점 이상
        ↓
-[Phase 3] Debate (Bull vs Bear)
-   - 낙관론자/비관론자 AI 토론
+[Phase 3] Debate (Claude)
+   - Bull vs Bear AI 토론
+   - 리스크 요인 검토
        ↓
 [Phase 4] Judge Decision (OpenAI)
+   - 토론 내용 종합 판단
    - 최종 승인 기준: 75점 이상
        ↓
 Watchlist (상위 15개)
@@ -185,10 +189,10 @@ report = analyzer.analyze('035420')  # NAVER
 - **Gunicorn / Uvicorn** - WSGI/ASGI 서버
 
 ### AI / ML
-- **Google Gemini** - 1차 스크리닝 (Scout)
-- **Anthropic Claude** - 2차 심층 분석 (Hunter)
+- **Anthropic Claude** - 심층 분석 (Hunter) + AI 토론 (Debate)
 - **OpenAI GPT** - 최종 판단 (Judge)
-- **ChromaDB** - 벡터 저장소 (RAG)
+- **Google Gemini** - 뉴스 임베딩 (ChromaDB RAG)
+- **ChromaDB** - 벡터 저장소 (뉴스 RAG)
 
 ### Data
 - **MariaDB** - 영구 저장소
