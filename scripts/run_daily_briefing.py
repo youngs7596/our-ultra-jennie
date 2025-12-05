@@ -32,7 +32,6 @@ load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 import shared.auth as auth
 import shared.database as database
 from shared.db.connection import ensure_engine_initialized
-from shared.kis.gateway_client import KISGatewayClient
 from shared.notification import TelegramBot
 
 # 로깅 설정
@@ -54,14 +53,14 @@ def get_portfolio_summary(connection) -> dict:
     try:
         cursor = connection.cursor()
         
-        # 보유 종목 조회
+        # 보유 종목 조회 (실제 스키마에 맞춤)
         cursor.execute("""
             SELECT 
-                STOCK_CODE, STOCK_NAME, QUANTITY, AVG_BUY_PRICE,
-                CURRENT_PRICE, PROFIT_PCT, PROFIT_AMOUNT
+                STOCK_CODE, STOCK_NAME, QUANTITY, AVERAGE_BUY_PRICE,
+                CURRENT_HIGH_PRICE, STATUS
             FROM PORTFOLIO
-            WHERE QUANTITY > 0
-            ORDER BY PROFIT_PCT DESC
+            WHERE QUANTITY > 0 AND STATUS = 'HOLDING'
+            ORDER BY QUANTITY DESC
         """)
         holdings = cursor.fetchall()
         
@@ -69,24 +68,24 @@ def get_portfolio_summary(connection) -> dict:
         cursor.execute("""
             SELECT 
                 STOCK_CODE, STOCK_NAME, TRADE_TYPE, QUANTITY, PRICE, PROFIT_PCT
-            FROM TRADE_LOG
-            WHERE DATE(TRADE_TIME) = CURDATE()
-            ORDER BY TRADE_TIME DESC
+            FROM TRADELOG
+            WHERE DATE(CREATED_AT) = CURDATE()
+            ORDER BY CREATED_AT DESC
+            LIMIT 10
         """)
         today_trades = cursor.fetchall()
         
-        # 총 자산 계산
+        # 총 자산 계산 (평균매수가 기준)
         total_value = sum(
-            (h.get('QUANTITY', 0) or 0) * (h.get('CURRENT_PRICE', 0) or 0) 
+            (h.get('QUANTITY', 0) or 0) * (h.get('AVERAGE_BUY_PRICE', 0) or 0) 
             for h in holdings
         )
-        total_profit = sum(h.get('PROFIT_AMOUNT', 0) or 0 for h in holdings)
         
         return {
             "holdings": holdings,
             "today_trades": today_trades,
             "total_value": total_value,
-            "total_profit": total_profit,
+            "total_profit": 0,  # 현재가 정보가 없어서 계산 불가
             "holdings_count": len(holdings)
         }
     except Exception as e:
@@ -105,20 +104,19 @@ def get_watchlist_summary(connection) -> dict:
     try:
         cursor = connection.cursor()
         
-        # 상위 종목 조회
+        # 상위 종목 조회 (실제 스키마에 맞춤)
         cursor.execute("""
             SELECT 
-                STOCK_CODE, STOCK_NAME, LLM_SCORE, LLM_GRADE, 
-                FACTOR_SCORE, BUY_SIGNAL_TYPE
+                STOCK_CODE, STOCK_NAME, LLM_SCORE, IS_TRADABLE
             FROM WATCHLIST
-            WHERE IS_ACTIVE = 1
+            WHERE IS_TRADABLE = 1
             ORDER BY LLM_SCORE DESC
             LIMIT 10
         """)
         top_picks = cursor.fetchall()
         
         # 총 종목 수
-        cursor.execute("SELECT COUNT(*) as cnt FROM WATCHLIST WHERE IS_ACTIVE = 1")
+        cursor.execute("SELECT COUNT(*) as cnt FROM WATCHLIST WHERE IS_TRADABLE = 1")
         total_count = cursor.fetchone().get('cnt', 0)
         
         return {
@@ -131,28 +129,15 @@ def get_watchlist_summary(connection) -> dict:
 
 
 def get_market_summary() -> dict:
-    """시장 요약 정보 (KIS Gateway 사용)"""
-    try:
-        gateway = KISGatewayClient()
-        
-        # KOSPI 지수
-        kospi = gateway.get_current_price("0001")  # KOSPI 지수
-        kosdaq = gateway.get_current_price("1001")  # KOSDAQ 지수
-        
-        return {
-            "kospi": kospi.get("stck_prpr", "N/A") if kospi else "N/A",
-            "kospi_change": kospi.get("prdy_ctrt", "N/A") if kospi else "N/A",
-            "kosdaq": kosdaq.get("stck_prpr", "N/A") if kosdaq else "N/A",
-            "kosdaq_change": kosdaq.get("prdy_ctrt", "N/A") if kosdaq else "N/A",
-        }
-    except Exception as e:
-        logger.warning(f"시장 정보 조회 실패: {e}")
-        return {
-            "kospi": "N/A",
-            "kospi_change": "N/A", 
-            "kosdaq": "N/A",
-            "kosdaq_change": "N/A"
-        }
+    """시장 요약 정보 (DB에서 조회 또는 스킵)"""
+    # KIS Gateway는 개별 종목 조회용이므로 지수 정보는 스킵
+    # 추후 지수 데이터 수집 스크립트 추가 시 활성화 가능
+    return {
+        "kospi": "N/A",
+        "kospi_change": "N/A", 
+        "kosdaq": "N/A",
+        "kosdaq_change": "N/A"
+    }
 
 
 def format_briefing_message(portfolio: dict, watchlist: dict, market: dict) -> str:
@@ -184,10 +169,11 @@ def format_briefing_message(portfolio: dict, watchlist: dict, market: dict) -> s
 
     # 보유 종목 TOP 5
     if portfolio['holdings']:
-        msg += "*보유 종목 TOP 5:*\n"
+        msg += "*보유 종목:*\n"
         for i, h in enumerate(portfolio['holdings'][:5], 1):
-            profit_emoji = "📈" if (h.get('PROFIT_PCT') or 0) > 0 else "📉"
-            msg += f"  {i}. {h.get('STOCK_NAME', 'N/A')} {profit_emoji} {h.get('PROFIT_PCT', 0):+.1f}%\n"
+            qty = h.get('QUANTITY', 0) or 0
+            avg_price = h.get('AVERAGE_BUY_PRICE', 0) or 0
+            msg += f"  {i}. {h.get('STOCK_NAME', 'N/A')} ({qty}주 @ {avg_price:,.0f}원)\n"
         msg += "\n"
 
     # 오늘 거래
@@ -204,8 +190,16 @@ def format_briefing_message(portfolio: dict, watchlist: dict, market: dict) -> s
 """
     if watchlist['top_picks']:
         for i, w in enumerate(watchlist['top_picks'][:5], 1):
-            grade = w.get('LLM_GRADE', 'N/A')
             score = w.get('LLM_SCORE', 0) or 0
+            # 점수 기반 등급 표시
+            if score >= 85:
+                grade = "S"
+            elif score >= 70:
+                grade = "A"
+            elif score >= 60:
+                grade = "B"
+            else:
+                grade = "C"
             msg += f"  {i}. {w.get('STOCK_NAME', 'N/A')} [{grade}] {score:.0f}점\n"
     else:
         msg += "  (데이터 없음)\n"
