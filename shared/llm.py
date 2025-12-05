@@ -1107,36 +1107,46 @@ class JennieBrain:
     def get_jennies_analysis_score(self, stock_info):
         """
         종목의 뉴스, 펀더멘털, 모멘텀을 종합하여 매수 적합도 점수(0~100)를 산출합니다.
-        [Phase 1: Hunter Scout] - Claude Haiku (빠르고 똑똑함)
+        [Phase 1: Hunter Scout] - Claude Haiku 우선, 실패 시 OpenAI/Gemini 폴백
         """
-        # [v4.0] Claude Haiku 우선 (빠르고 프롬프트 준수 우수), 없으면 GPT, 최후에 Gemini
-        provider = self.provider_claude if hasattr(self, 'provider_claude') and self.provider_claude else \
-                   (self.provider_openai if self.provider_openai else self.provider_gemini)
-        if provider is None:
+        # 폴백 체인: Claude → OpenAI → Gemini
+        providers = []
+        if hasattr(self, 'provider_claude') and self.provider_claude:
+            providers.append(('CLAUDE', self.provider_claude))
+        if self.provider_openai:
+            providers.append(('OPENAI', self.provider_openai))
+        if self.provider_gemini:
+            providers.append(('GEMINI', self.provider_gemini))
+        
+        if not providers:
             logger.error("❌ [JennieBrain] LLM 모델이 초기화되지 않았습니다!")
             return {'score': 0, 'grade': 'D', 'reason': 'JennieBrain 초기화 실패'}
-            
-        try:
-            prompt = self._build_analysis_prompt(stock_info)
-            
-            provider_name = provider.name.upper()
-            logger.info(f"--- [JennieBrain/Phase1-Hunter] 필터링 ({provider_name}): {stock_info.get('name')} ---")
-            
-            # Claude Haiku 사용 (빠르고 프롬프트 준수 우수)
-            result = provider.generate_json(
-                prompt,
-                ANALYSIS_RESPONSE_SCHEMA,
-                temperature=0.3,
-            )
-            
-            logger.info(f"--- [JennieBrain] 분석 완료: {stock_info.get('name')} ---")
-            logger.info(f"   (점수): {result.get('score')}점 (등급: {result.get('grade')})")
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"❌ [JennieBrain] 분석 중 오류: {e}", exc_info=True)
-            return {'score': 0, 'grade': 'D', 'reason': f"분석 오류: {e}"}
+        
+        prompt = self._build_analysis_prompt(stock_info)
+        last_error = None
+        
+        for provider_name, provider in providers:
+            try:
+                logger.info(f"--- [JennieBrain/Phase1-Hunter] 필터링 ({provider_name}): {stock_info.get('name')} ---")
+                
+                result = provider.generate_json(
+                    prompt,
+                    ANALYSIS_RESPONSE_SCHEMA,
+                    temperature=0.3,
+                )
+                
+                logger.info(f"--- [JennieBrain] 분석 완료 ({provider_name}): {stock_info.get('name')} ---")
+                logger.info(f"   (점수): {result.get('score')}점 (등급: {result.get('grade')})")
+                
+                return result
+                
+            except Exception as e:
+                last_error = e
+                logger.warning(f"⚠️ [JennieBrain] {provider_name} 실패, 폴백 시도: {e}")
+                continue
+        
+        logger.error(f"❌ [JennieBrain] 모든 LLM 실패: {last_error}", exc_info=True)
+        return {'score': 0, 'grade': 'D', 'reason': f"분석 오류: {last_error}"}
 
     def _build_analysis_prompt(self, stock_info):
         """종목 심층 분석 프롬프트 생성"""
