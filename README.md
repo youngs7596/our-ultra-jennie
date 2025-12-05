@@ -312,7 +312,6 @@ my-ultra-jennie/
 │       └── gateway_client.py   # 게이트웨이 클라이언트
 │
 ├── prompts/                     # LLM 프롬프트
-│   ├── scout_prompt.py         # Scout 프롬프트
 │   └── competitor_benefit_prompt.py  # 경쟁사 수혜 프롬프트
 │
 ├── infrastructure/             # 인프라 설정
