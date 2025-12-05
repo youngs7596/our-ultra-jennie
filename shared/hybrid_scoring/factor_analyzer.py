@@ -1785,7 +1785,9 @@ class FactorAnalyzer:
     
     def run_full_analysis(self, 
                           stock_codes: List[str] = None,
-                          market_regime: str = 'ALL') -> Dict:
+                          market_regime: str = 'ALL',
+                          lookback_days: int = 730,
+                          force_refresh: bool = False) -> Dict:
         """
         전체 팩터 분석 실행 (배치 작업)
         
@@ -1797,10 +1799,15 @@ class FactorAnalyzer:
         Args:
             stock_codes: 분석 대상 종목 (None이면 전체)
             market_regime: 시장 국면
+            lookback_days: 분석 기간 (일)
+            force_refresh: True면 캐시 무시하고 전체 재분석
         
         Returns:
             분석 결과 요약
         """
+        # lookback_days와 force_refresh는 향후 캐시 로직에서 활용
+        self.lookback_days = lookback_days
+        self.force_refresh = force_refresh
         logger.info("=" * 60)
         logger.info("   🔬 FactorAnalyzer 전체 분석 시작 (v5.0.2)")
         logger.info("=" * 60)

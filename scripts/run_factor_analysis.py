@@ -84,15 +84,19 @@ def parse_args():
     parser = argparse.ArgumentParser(description="FactorAnalyzer 배치 작업 실행")
     parser.add_argument("--codes", type=int, default=100, 
                         help="분석할 종목 수 (기본: 100)")
+    parser.add_argument("--days", type=int, default=730,
+                        help="분석 데이터 기간 (일, 기본: 730)")
     parser.add_argument("--regime", type=str, default="ALL",
                         choices=["BULL", "BEAR", "SIDEWAYS", "ALL"],
                         help="시장 국면 (기본: ALL)")
+    parser.add_argument("--full", action="store_true",
+                        help="전체 재분석 모드 (캐시 무시)")
     parser.add_argument("--skip-news", action="store_true",
                         help="뉴스 카테고리 분석 건너뛰기")
     parser.add_argument("--skip-compound", action="store_true",
                         help="복합 조건 분석 건너뛰기")
     parser.add_argument("--backtest", action="store_true",
-                        help="[v5.0.5] 백테스트 시뮬레이션 실행")
+                        help="[v5.0.5] 팩터 가중치 검증용 백테스트 실행")
     parser.add_argument("--backtest-days", type=int, default=180,
                         help="백테스트 기간 (일, 기본: 180)")
     return parser.parse_args()
@@ -105,7 +109,9 @@ def main():
     logger.info("=" * 60)
     logger.info("🔬 FactorAnalyzer 배치 작업 시작")
     logger.info(f"   - 분석 종목 수: {args.codes}개")
+    logger.info(f"   - 분석 기간: {args.days}일")
     logger.info(f"   - 시장 국면: {args.regime}")
+    logger.info(f"   - 전체 재분석: {'예' if args.full else '아니오'}")
     logger.info("=" * 60)
     
     start_time = datetime.now()
@@ -139,7 +145,9 @@ def main():
         analyzer = FactorAnalyzer(conn)
         results = analyzer.run_full_analysis(
             stock_codes=stock_codes,
-            market_regime=args.regime
+            market_regime=args.regime,
+            lookback_days=args.days,
+            force_refresh=args.full
         )
         
         # 결과 요약

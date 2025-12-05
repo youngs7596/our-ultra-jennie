@@ -106,7 +106,7 @@ class WeeklyFactorAnalysisBatch:
                 cwd=str(PROJECT_ROOT),
                 capture_output=True,
                 text=True,
-                timeout=3600  # 1시간 타임아웃
+                timeout=7200  # 2시간 타임아웃
             )
             
             if result.returncode == 0:
@@ -140,7 +140,7 @@ class WeeklyFactorAnalysisBatch:
             '--codes', '200',
             '--days', str(self.days),
             '--max-pages', str(self.max_pages),
-            '--max-articles', str(self.max_articles),
+            '--max-articles', '600',  # 종목당 최대 600개 기사
             '--sleep', '2.0'
         ]
         
