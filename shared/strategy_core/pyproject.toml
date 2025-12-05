@@ -1,0 +1,25 @@
+[build-system]
+requires = ["maturin>=1.6,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "strategy-core"
+version = "0.1.0"
+description = "High performance technical indicator engine for my-supreme-jennie"
+requires-python = ">=3.10"
+authors = [
+    { name = "my-supreme-jennie team", email = "dev@my-supreme-jennie.local" }
+]
+license = { text = "Proprietary" }
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Operating System :: POSIX :: Linux",
+    "License :: Other/Proprietary License"
+]
+
+[tool.maturin]
+module-name = "strategy_core"
+bindings = "pyo3"
+

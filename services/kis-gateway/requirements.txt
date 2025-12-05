@@ -1,0 +1,22 @@
+# KIS Gateway Service
+Flask>=3.0.0
+Gunicorn>=21.2.0
+
+# Rate Limiting & Circuit Breaker
+Flask-Limiter>=3.5.0
+pybreaker>=1.0.1
+redis>=5.0.0
+
+# Oracle DB
+oracledb>=2.0.0
+SQLAlchemy==2.0.31
+pandas>=2.2.0
+
+# WebSocket (KISClient 의존성)
+websocket-client>=1.8.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+filelock>=3.14.0
+pytz

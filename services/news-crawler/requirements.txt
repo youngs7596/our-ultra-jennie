@@ -1,0 +1,36 @@
+# News Crawler Service
+# Python 3.11
+# [v9.0] KOSPI 200 Universe 뉴스 수집
+
+# Flask & Gunicorn
+flask
+gunicorn
+python-dotenv
+
+# Oracle DB
+oracledb
+pymysql>=1.0.0
+SQLAlchemy==2.0.31
+
+# Data Processing
+pandas
+finance-datareader
+
+# LangChain & RAG
+langchain-core==0.3.80
+langchain-google-genai==2.0.10
+langchain-chroma==0.2.6
+langchain-text-splitters
+chromadb
+
+# HTTP & RSS
+requests
+feedparser
+
+# Utils
+pytz
+pydantic
+
+redis
+google-generativeai
+pika==1.3.2

@@ -1,0 +1,20 @@
+# utilities/requirements.txt
+# Utilities 스크립트 실행을 위한 최소 의존성
+
+# ChromaDB (wipe_chroma.py)
+chromadb
+
+# 환경 변수 로딩
+python-dotenv
+
+# Oracle DB (다른 utilities용)
+oracledb
+SQLAlchemy==2.0.31
+pandas
+
+# KIS API (sync, check, data_collector용)
+requests
+websocket-client
+
+# Redis (실시간 데이터 캐싱)
+redis

@@ -1,0 +1,25 @@
+# Command Handler Service
+# Python 3.11
+# Based on my-little-jennie/agent_job/requirements.txt
+
+# Flask & Gunicorn
+flask==3.0.3
+gunicorn==21.2.0
+python-dotenv==1.0.1
+
+# Oracle DB
+oracledb==2.2.0
+SQLAlchemy==2.0.31
+
+# Data Processing
+pandas==2.2.2
+pyarrow==16.1.0
+
+# HTTP Requests
+requests==2.31.0
+websocket-client==1.8.0
+
+# Utils
+pytz
+filelock==3.14.0
+redis

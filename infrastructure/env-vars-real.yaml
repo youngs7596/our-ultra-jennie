@@ -1,0 +1,91 @@
+# my-supreme-jennie 환경 변수 (REAL = WSL2 운영 모드)
+# Cloud Run 대신 로컬 Docker Compose(WSL2)에서 REAL 서비스를 구동할 때 사용합니다.
+
+# 1. 공통 런타임 설정
+GCP_PROJECT_ID: "local"
+GCP_REGION: "local"
+GCP_LOCATION: "local"
+TRADING_MODE: "REAL"
+DRY_RUN: "false"
+CLOUD_RUN_URL: "https://dashboard.yj-ai-lab.com"
+
+# 2. KIS API Secret IDs (secrets.json 키 기준)
+MOCK_SECRET_ID_APP_KEY: "kis-v-app-key"
+MOCK_SECRET_ID_APP_SECRET: "kis-v-app-secret"
+MOCK_SECRET_ID_ACCOUNT_PREFIX: "kis-v-account-no"
+REAL_SECRET_ID_APP_KEY: "kis-r-app-key"
+REAL_SECRET_ID_APP_SECRET: "kis-r-app-secret"
+REAL_SECRET_ID_ACCOUNT_PREFIX: "kis-r-account-no"
+
+# 3. Oracle DB Secret IDs
+SECRET_ID_ORACLE_DB_USER: "oracle-db-id"
+SECRET_ID_ORACLE_DB_PASSWORD: "oracle-db-password"
+OCI_DB_SERVICE_NAME: "mylittlejenniedb_medium"
+OCI_WALLET_DIR_NAME: "/app/wallet"
+
+# 4. KIS API Base URLs
+KIS_BASE_URL_MOCK: "https://openapivts.koreainvestment.com:29443"
+KIS_BASE_URL_REAL: "https://openapi.koreainvestment.com:9443"
+
+# 5. Gemini & OAuth
+SECRET_ID_GEMINI_API_KEY: "gemini-api-key"
+SECRET_ID_GOOGLE_OAUTH_CLIENT_ID: "google-oauth-client-id"
+SECRET_ID_GOOGLE_OAUTH_CLIENT_SECRET: "google-oauth-client-secret"
+SECRET_ID_ALLOWED_EMAILS: "allowed-emails"
+
+# 6. 투자 및 토큰 설정
+INVESTMENT_AMOUNT: "1000000"
+DAILY_BUY_LIMIT_AMOUNT: "1000000"
+KIS_TOKEN_FILE_PATH: "/tmp/kis_token.json"
+KIS_ACCOUNT_SUFFIX: "01"
+
+# 7. 하락장 대응 (LLM 기반)
+ALLOW_BEAR_TRADING: "true"
+MIN_LLM_CONFIDENCE_BEAR: "80"
+BEAR_POSITION_RATIO: "0.2"
+BEAR_STOP_LOSS_ATR_MULT: "2.0"
+BEAR_FIRST_TP_PCT: "0.03"
+BEAR_PARTIAL_CLOSE_RATIO: "0.5"
+BEAR_VOLUME_SPIKE_MULTIPLIER: "1.5"
+
+# 8. Gateway / Redis / Chroma
+USE_KIS_GATEWAY: "true"
+KIS_GATEWAY_URL: "http://kis-gateway:8080"
+USE_GATEWAY_AUTH: "false"
+USE_DISTRIBUTED_AUTH: "false"
+REDIS_URL: "redis://redis:6379"
+CHROMA_SERVER_HOST: "chromadb"
+CHROMA_PORT: "8000"
+CIRCUIT_BREAKER_FAIL_MAX: "20"
+CIRCUIT_BREAKER_TIMEOUT: "60"
+
+# 9. RabbitMQ 설정 (Cloud Tasks 대체)
+USE_RABBITMQ: "true"
+USE_CLOUD_TASKS: "false"
+RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+RABBITMQ_QUEUE_SELL_ORDERS: "sell-orders"
+
+# 10. Pub/Sub Emulator (로컬 기본값)
+PUBSUB_EMULATOR_HOST: "pubsub-emulator:8085"
+
+# 11. 뉴스 감성 분석 설정
+MAX_SENTIMENT_DOCS_PER_RUN: "40"
+SENTIMENT_COOLDOWN_SECONDS: "0.2"
+
+# 12. 로깅
+LOG_LEVEL: "INFO"
+PYTHONPATH: "/app"
+
+# 13. Scheduler (로컬 운영용)
+SCHEDULER_SCOPE: "real"
+SCHEDULER_DB_PATH: "/app/data/scheduler.db"
+SCHEDULER_TICK_SECONDS: "5"
+SCHEDULER_TIMEZONE: "Asia/Seoul"
+SCHEDULER_QUEUE_BUY_SCANNER: "real.jobs.buy-scanner"
+SCHEDULER_QUEUE_NEWS_CRAWLER: "real.jobs.news-crawler"
+ENABLE_BUY_SCANNER_JOB_WORKER: "true"
+ENABLE_NEWS_CRAWLER_JOB_WORKER: "true"
+SCHEDULER_QUEUE_PRICE_MONITOR: "real.jobs.price-monitor"
+ENABLE_PRICE_MONITOR_JOB_WORKER: "true"
+SCHEDULER_QUEUE_SCOUT_JOB: "real.jobs.scout"
+ENABLE_SCOUT_JOB_WORKER: "true"

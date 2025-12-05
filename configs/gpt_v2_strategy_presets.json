@@ -1,0 +1,69 @@
+{
+  "balanced_champion": {
+    "label": "Balanced Champion",
+    "description": "Score 198.78 – 수익과 안정성을 동시 추구",
+    "params": {
+      "rsi_buy": 35,
+      "breakout_buffer_pct": 0.8,
+      "bb_buffer_pct": 2.0,
+      "llm_threshold": 65,
+      "max_position_allocation": 15.0,
+      "max_stock_pct": 12.0,
+      "max_sector_pct": 30.0,
+      "cash_keep_pct": 5.0,
+      "target_profit_pct": 8.0,
+      "base_stop_loss_pct": 6.0,
+      "stop_loss_atr_mult": 2.0,
+      "sell_rsi_1": 70.0,
+      "sell_rsi_2": 75.0,
+      "sell_rsi_3": 78.0,
+      "max_buys_per_day": 3,
+      "max_hold_days": 25
+    }
+  },
+  "aggressive_swing": {
+    "label": "Aggressive Swing",
+    "description": "Score 185.01 – 공격적 추세 추종",
+    "params": {
+      "rsi_buy": 30,
+      "breakout_buffer_pct": 0.8,
+      "bb_buffer_pct": 1.0,
+      "llm_threshold": 65,
+      "max_position_allocation": 15.0,
+      "max_stock_pct": 15.0,
+      "max_sector_pct": 35.0,
+      "cash_keep_pct": 3.0,
+      "target_profit_pct": 10.0,
+      "base_stop_loss_pct": 6.0,
+      "stop_loss_atr_mult": 1.8,
+      "sell_rsi_1": 68.0,
+      "sell_rsi_2": 75.0,
+      "sell_rsi_3": 78.0,
+      "max_buys_per_day": 4,
+      "max_hold_days": 30
+    }
+  },
+  "iron_shield": {
+    "label": "Iron Shield",
+    "description": "Score 180.95 – 최저 MDD 방어 전략",
+    "params": {
+      "rsi_buy": 35,
+      "breakout_buffer_pct": 0.8,
+      "bb_buffer_pct": 2.0,
+      "llm_threshold": 75,
+      "max_position_allocation": 15.0,
+      "max_stock_pct": 15.0,
+      "max_sector_pct": 35.0,
+      "cash_keep_pct": 5.0,
+      "target_profit_pct": 8.0,
+      "base_stop_loss_pct": 4.0,
+      "stop_loss_atr_mult": 2.0,
+      "sell_rsi_1": 70.0,
+      "sell_rsi_2": 75.0,
+      "sell_rsi_3": 78.0,
+      "max_buys_per_day": 3,
+      "max_hold_days": 35
+    }
+  }
+}
+

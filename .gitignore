@@ -1,0 +1,72 @@
+# ============================================================================
+# my-ultra-jennie .gitignore
+# ============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.eggs/
+*.egg-info/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+
+# Secrets & Credentials (IMPORTANT!)
+secrets.json
+wallet/
+*.pem
+*.key
+
+# Runtime Data
+chroma_data/
+redis_data/
+scheduler_data/
+logs/
+*.log
+
+# Observability Data (regenerated)
+observability/grafana/grafana.db
+observability/grafana/plugins/
+observability/loki/data/
+
+# Build & Cache
+*.mst
+*.zip
+node_modules/
+dist/
+build/
+.cache/
+docs_cache/
+
+# Test & Temp
+test_*.py
+*_test.py
+*.tmp
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Results & Generated
+gpt_v2_opt_results_*.json
+smart_universe.json
+

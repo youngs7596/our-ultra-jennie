@@ -1,0 +1,764 @@
+services:
+  # ============================================================================
+  # 0. Messaging / Supporting Services
+  # ============================================================================
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    restart: always
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 0. Infrastructure Dependencies (ChromaDB & Redis)
+  # ============================================================================
+  chromadb:
+    image: chromadb/chroma
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_data:/chroma/chroma
+    restart: always
+    networks:
+      - msa-network
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis_data:/data
+    restart: always
+    networks:
+      - msa-network
+
+  # ============================================================================
+  #  \\u2601\\ufe0f Observability Stack (Loki + Promtail + Grafana)
+  # ============================================================================
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: loki
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+      - -distributor.replication-factor=1
+      - -replication-factor=1
+    user: "0"
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - ./observability/loki/data:/tmp/loki
+    restart: always
+    networks:
+      - msa-network
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    command: -config.file=/etc/promtail/config.yaml
+    volumes:
+      - ./observability/promtail/config.yaml:/etc/promtail/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: always
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - msa-network
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    user: "0"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_DEFAULT_THEME=dark
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./observability/grafana:/var/lib/grafana
+    restart: always
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - msa-network
+
+# ============================================================================
+# 0-bis. Scheduler Service
+# ============================================================================
+  scheduler-service:
+    build:
+      context: .
+      dockerfile: services/scheduler-service/Dockerfile
+    container_name: scheduler-service
+    profiles: ["real"]
+    network_mode: host
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    environment:
+      - PORT=8095
+      - DB_TYPE=MARIADB
+      - MARIADB_HOST=127.0.0.1
+      - MARIADB_PORT=3306
+      - MARIADB_USER=root
+      - MARIADB_PASSWORD=q1w2e3R$
+      - MARIADB_DBNAME=jennie_db
+      - RABBITMQ_URL=amqp://guest:guest@127.0.0.1:5672/
+    volumes:
+      - ./scheduler_data:/app/data
+
+  scheduler-service-mock:
+    build:
+      context: .
+      dockerfile: services/scheduler-service/Dockerfile
+    container_name: scheduler-service-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    environment:
+      - PORT=8095
+    volumes:
+      - ./scheduler_data:/app/data
+    ports:
+      - "9095:8095"
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 1. KIS Mock Server (간단한 HTTP REST API 버전)
+  # WebSocket은 Cloud Run 환경에서만 테스트 (DB 의존성 때문)
+  # ============================================================================
+  kis-mock:
+    build:
+      context: .
+      dockerfile: docker/kis-mock/Dockerfile
+    container_name: kis-mock
+    environment:
+      - PORT=9443
+    ports:
+      - "9443:9443"
+    networks:
+      - msa-network
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:9443/health').raise_for_status()" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================================
+  # 2. Pub/Sub Emulator
+  # ============================================================================
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    container_name: pubsub-emulator
+    ports:
+      - "8085:8085"
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085
+    networks:
+      - msa-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8085" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # 3. KIS Gateway
+  # ============================================================================
+  kis-gateway:
+    build:
+      context: .
+      dockerfile: services/kis-gateway/Dockerfile
+    container_name: kis-gateway
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+      - GUNICORN_CMD_ARGS=--timeout 600
+    # WSL2 mirrored mode: 127.0.0.1로 MariaDB/Redis 접근
+    network_mode: host
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health').raise_for_status()" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  kis-gateway-mock:
+    build:
+      context: .
+      dockerfile: services/kis-gateway/Dockerfile
+    container_name: kis-gateway-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+      - GUNICORN_CMD_ARGS=--timeout 600
+    ports:
+      - "9080:8080"
+    depends_on:
+      kis-mock:
+        condition: service_healthy
+    networks:
+      - msa-network
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health').raise_for_status()" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # 4. Buy Scanner
+  # ============================================================================
+  buy-scanner:
+    build:
+      context: .
+      dockerfile: services/buy-scanner/Dockerfile
+    container_name: buy-scanner
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8081
+      - SECRETS_FILE=/app/config/secrets.json
+    # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  buy-scanner-mock:
+    build:
+      context: .
+      dockerfile: services/buy-scanner/Dockerfile
+    container_name: buy-scanner-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8081
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "9081:8081"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_started
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 5. Buy Executor
+  # ============================================================================
+  buy-executor:
+    build:
+      context: .
+      dockerfile: services/buy-executor/Dockerfile
+    container_name: buy-executor
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8082
+      - SECRETS_FILE=/app/config/secrets.json
+    # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  buy-executor-mock:
+    build:
+      context: .
+      dockerfile: services/buy-executor/Dockerfile
+    container_name: buy-executor-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8082
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "9082:8082"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_started
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 6. Sell Executor
+  # ============================================================================
+  sell-executor:
+    build:
+      context: .
+      dockerfile: services/sell-executor/Dockerfile
+    container_name: sell-executor
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8083
+      - SECRETS_FILE=/app/config/secrets.json
+    # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  sell-executor-mock:
+    build:
+      context: .
+      dockerfile: services/sell-executor/Dockerfile
+    container_name: sell-executor-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8083
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "9083:8083"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    networks:
+      - msa-network
+  # ============================================================================
+  # 7. Price Monitor
+  # ============================================================================
+  price-monitor:
+    build:
+      context: .
+      dockerfile: services/price-monitor/Dockerfile
+    container_name: price-monitor
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8088
+      - SECRETS_FILE=/app/config/secrets.json
+      - GUNICORN_CMD_ARGS=--timeout 600
+      - KIS_TOKEN_PROVIDER_URL=http://127.0.0.1:8080/api/token
+    # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  price-monitor-mock:
+    build:
+      context: .
+      dockerfile: services/price-monitor/Dockerfile
+    container_name: price-monitor-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+      - GUNICORN_CMD_ARGS=--timeout 600
+      - KIS_TOKEN_PROVIDER_URL=http://kis-gateway-mock:8080/api/token
+    ports:
+      - "9088:8080"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 8. Daily Briefing
+  # ============================================================================
+  daily-briefing:
+    build:
+      context: .
+      dockerfile: services/daily-briefing/Dockerfile
+    container_name: daily-briefing
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+    environment:
+      - PORT=8086
+      - SECRETS_FILE=/app/config/secrets.json
+    # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  daily-briefing-mock:
+    build:
+      context: .
+      dockerfile: services/daily-briefing/Dockerfile
+    container_name: daily-briefing-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "9086:8080"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 9. Scout Job
+  # ============================================================================
+  scout-job:
+    build:
+      context: .
+      dockerfile: services/scout-job/Dockerfile
+    container_name: scout-job
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8087
+      - SECRETS_FILE=/app/config/secrets.json
+    # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  scout-job-mock:
+    build:
+      context: .
+      dockerfile: services/scout-job/Dockerfile
+    container_name: scout-job-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "9087:8080"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 10. News Crawler
+  # ============================================================================
+  news-crawler:
+    build:
+      context: .
+      dockerfile: services/news-crawler/Dockerfile
+    container_name: news-crawler
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8089
+      - SECRETS_FILE=/app/config/secrets.json
+    # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  news-crawler-mock:
+    build:
+      context: .
+      dockerfile: services/news-crawler/Dockerfile
+    container_name: news-crawler-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "9089:8080"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 11. RAG Cacher - [v3.9] 제거됨 (Scout가 직접 ChromaDB 조회)
+  # ============================================================================
+  # rag-cacher 서비스는 더 이상 사용하지 않습니다.
+  # Scout Job이 직접 ChromaDB에서 종목별 뉴스를 검색합니다.
+
+  # ============================================================================
+  # 12. Streamlit Dashboard
+  # ============================================================================
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: dashboard
+    profiles: ["real"]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "8501:8080"
+    depends_on:
+      kis-gateway:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    networks:
+      - msa-network
+
+  dashboard-tunnel:
+    build:
+      context: .
+      dockerfile: services/cloudflared/Dockerfile
+    container_name: dashboard-tunnel
+    restart: unless-stopped
+    profiles: ["real"]
+    network_mode: host
+    depends_on:
+      - dashboard-v2-frontend
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+
+  dashboard-mock:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: dashboard-mock
+    profiles: ["mock"]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+    environment:
+      - PORT=8080
+      - SECRETS_FILE=/app/config/secrets.json
+    ports:
+      - "9501:8080"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    networks:
+      - msa-network
+
+  dashboard-tunnel-mock:
+    build:
+      context: .
+      dockerfile: services/cloudflared/Dockerfile
+    container_name: dashboard-tunnel-mock
+    restart: unless-stopped
+    profiles: ["mock"]
+    depends_on:
+      - dashboard-mock
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+    networks:
+      - msa-network
+
+  # ============================================================================
+  # 🚀 Dashboard V2 - React + FastAPI (NEW!)
+  # ============================================================================
+  dashboard-v2-backend:
+    build:
+      context: .
+      dockerfile: services/dashboard-v2/backend/Dockerfile
+    container_name: dashboard-v2-backend
+    profiles: ["real"]
+    network_mode: host
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-my-supreme-jennie-jwt-secret-2025}
+      - REDIS_URL=redis://127.0.0.1:6379/0
+      - KIS_GATEWAY_URL=http://127.0.0.1:8080
+      - DB_TYPE=MARIADB
+      - MARIADB_HOST=127.0.0.1
+      - MARIADB_PORT=3306
+      - MARIADB_USER=root
+      - MARIADB_PASSWORD=q1w2e3R$
+      - MARIADB_DBNAME=jennie_db
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+      - ./wallet:/app/wallet:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dashboard-v2-frontend:
+    build:
+      context: ./services/dashboard-v2/frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api
+    container_name: dashboard-v2-frontend
+    profiles: ["real"]
+    network_mode: host
+    depends_on:
+      dashboard-v2-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # 📝 Exam App (AI 모의고사 시스템)
+  # ============================================================================
+  exam-app-backend:
+    build:
+      context: .
+      dockerfile: services/exam-app/backend/Dockerfile
+    container_name: exam-app-backend
+    profiles: ["real"]
+    network_mode: host
+    environment:
+      - MARIADB_HOST=127.0.0.1
+      - MARIADB_PORT=3306
+      - MARIADB_USER=root
+      - MARIADB_PASSWORD=q1w2e3R$
+      - EXAM_DB_NAME=jennie_exam_db
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8100/health\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  exam-app-frontend:
+    build:
+      context: .
+      dockerfile: services/exam-app/frontend/Dockerfile
+    container_name: exam-app-frontend
+    profiles: ["real"]
+    network_mode: host
+    depends_on:
+      exam-app-backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  msa-network:
+    driver: bridge

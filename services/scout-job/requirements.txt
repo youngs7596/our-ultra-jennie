@@ -1,0 +1,36 @@
+# Scout Job Service Dependencies
+# MSA 구조에 맞게 버전 명시 최소화
+
+# Flask & Web
+flask
+gunicorn
+
+# LLM Providers - Hybrid Strategy
+google-generativeai  # Gemini-2.5-Flash for news sentiment
+openai>=1.0.0  # GPT-5-mini for Debate/Judge
+anthropic>=0.30.0  # Claude Haiku for Phase 1 Hunter (fast & smart)
+
+# RAG & Langchain
+# langchain-google-vertexai # Removed
+langchain-google-genai==2.0.10
+langchain-chroma
+langchain-core==0.3.80
+chromadb
+
+# Database (Oracle + MariaDB 하이브리드)
+oracledb
+pymysql>=1.0.0
+SQLAlchemy==2.0.31
+pandas
+pyarrow
+
+# Utilities
+python-dotenv
+websocket-client
+requests
+beautifulsoup4
+pydantic
+finance-datareader  # KOSPI/KOSDAQ 종목 리스트 조회
+
+redis
+pika==1.3.2

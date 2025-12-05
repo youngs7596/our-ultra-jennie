@@ -1,0 +1,12 @@
+flask==3.0.0
+gunicorn==21.2.0
+python-dotenv==1.0.0
+oracledb
+pymysql>=1.0.0
+SQLAlchemy==2.0.31
+requests==2.31.0
+pandas==2.1.4
+filelock==3.13.1
+websocket-client==1.7.0
+redis
+anthropic>=0.18.0
