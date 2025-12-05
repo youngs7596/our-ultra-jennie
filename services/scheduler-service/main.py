@@ -50,13 +50,20 @@ except Exception:
 
 # DB 연결 설정
 if DB_TYPE == "MARIADB":
-    MARIADB_HOST = os.getenv("MARIADB_HOST", "127.0.0.1")
-    MARIADB_PORT = os.getenv("MARIADB_PORT", "3306")
-    MARIADB_USER = os.getenv("MARIADB_USER", "root")
-    MARIADB_PASSWORD = os.getenv("MARIADB_PASSWORD", "")
-    MARIADB_DBNAME = os.getenv("MARIADB_DBNAME", "jennie_db")
+    from urllib.parse import quote_plus
+    from shared import auth
     
-    SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{MARIADB_USER}:{MARIADB_PASSWORD}@{MARIADB_HOST}:{MARIADB_PORT}/{MARIADB_DBNAME}?charset=utf8mb4"
+    MARIADB_HOST = os.getenv("MARIADB_HOST") or auth.get_secret("mariadb-host") or "127.0.0.1"
+    MARIADB_PORT = os.getenv("MARIADB_PORT") or auth.get_secret("mariadb-port") or "3306"
+    MARIADB_USER = os.getenv("MARIADB_USER") or auth.get_secret("mariadb-user") or "root"
+    MARIADB_PASSWORD = os.getenv("MARIADB_PASSWORD") or auth.get_secret("mariadb-password") or ""
+    MARIADB_DBNAME = os.getenv("MARIADB_DBNAME") or auth.get_secret("mariadb-database") or "jennie_db"
+    
+    # URL 인코딩 (특수문자 대응)
+    user_enc = quote_plus(MARIADB_USER)
+    password_enc = quote_plus(MARIADB_PASSWORD)
+    
+    SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{user_enc}:{password_enc}@{MARIADB_HOST}:{MARIADB_PORT}/{MARIADB_DBNAME}?charset=utf8mb4"
     engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
     logger.info(f"🗄️ Scheduler DB: MariaDB ({MARIADB_HOST}:{MARIADB_PORT}/{MARIADB_DBNAME})")
 else:
