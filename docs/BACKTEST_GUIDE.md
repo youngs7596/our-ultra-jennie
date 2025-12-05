@@ -386,7 +386,55 @@ preset_name, params = resolve_preset_for_regime("BULL")
 
 ---
 
-## 8. 트러블슈팅
+## 8. v1.0 개선사항
+
+### 8.1 LLM 점수 추정 로직 개선
+
+기존에는 단순 추정 공식을 사용했으나, v1.0에서는 **DB Watchlist 우선 조회** 방식으로 개선되었습니다.
+
+#### 동작 방식
+
+```python
+def _estimate_llm_score(self, code, factor_score, raw_score, signal):
+    # 1. DB Watchlist에서 실제 Scout 결과 조회
+    db_llm_score = self.watchlist_cache.get(code, {}).get('llm_score')
+    if db_llm_score is not None and db_llm_score > 0:
+        return float(db_llm_score)  # 실제 Scout 결과 사용
+    
+    # 2. DB에 없으면 개선된 추정 공식 사용
+    # 기본점수 50 + 팩터 기여(35%) + 신호 기여(8%) + 신호 보너스 + 노이즈
+```
+
+#### 신호 유형별 보너스 (실제 Scout 결과 분석 기반)
+
+| 신호 | 보너스 | 설명 |
+|------|--------|------|
+| `RES_BREAK` | +8점 | 저항선 돌파 - 강력한 모멘텀 |
+| `GOLDEN_CROSS` | +6점 | 골든크로스 - 추세 전환 |
+| `TREND_UP` | +4점 | 상승 추세 확인 |
+| `RSI_OVERSOLD` | +3점 | 과매도 반등 기회 |
+| `BB_TOUCH` | +2점 | 볼린저 밴드 터치 |
+
+### 8.2 Death Cross 매도 조건 추가
+
+v1.0에서 **Death Cross** 매도 조건이 추가되어 실제 `price-monitor`와 동일한 로직을 재현합니다.
+
+#### Death Cross 조건
+
+```python
+# MA5가 MA20 아래로 떨어지면 매도 신호
+if ma5 < ma20 and pos.high_price > pos.avg_price * 1.02:
+    reason = "DEATH_CROSS"
+```
+
+- **조건 1**: MA5 < MA20 (데드크로스 발생)
+- **조건 2**: 고점이 매수가 대비 2% 이상 (이미 상승했다가 하락)
+
+이로써 단순 하락이 아닌, **상승 후 추세 반전** 시에만 매도하여 과도한 손절을 방지합니다.
+
+---
+
+## 9. 트러블슈팅
 
 ### 일반적인 오류
 

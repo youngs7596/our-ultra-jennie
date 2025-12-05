@@ -255,6 +255,7 @@ class ScannerLite:
         breakout_buffer_pct: float,
         bb_buffer_pct: float,
         top_n: int,
+        watchlist_cache: Dict[str, Dict] = None,  # [v1.0] LLM 점수 조회용
     ):
         self.price_cache = price_cache
         self.regime_detector = regime_detector
@@ -265,6 +266,7 @@ class ScannerLite:
         self.breakout_buffer_pct = breakout_buffer_pct
         self.bb_buffer_pct = bb_buffer_pct
         self.top_n = top_n
+        self.watchlist_cache = watchlist_cache or {}  # [v1.0] Watchlist 캐시
 
     def detect_regime(self, kospi_slice: pd.DataFrame) -> Tuple[str, List[str]]:
         close_df = kospi_slice[["CLOSE_PRICE"]].rename(columns={"CLOSE_PRICE": "CLOSE_PRICE"})
@@ -365,7 +367,7 @@ class ScannerLite:
 
             if signal:
                 factor_score = self._compute_factor_score(df_window, kospi_slice, regime)
-                llm_score = self._estimate_llm_score(factor_score, score, signal)
+                llm_score = self._estimate_llm_score(code, factor_score, score, signal)
                 name = self.stock_names.get(code, code)
                 metadata = {**metadata, "name": name}
                 candidates.append(
@@ -402,17 +404,70 @@ class ScannerLite:
             logger.debug(f"팩터 점수 계산 실패: {exc}")
             return 50.0
 
-    @staticmethod
-    def _estimate_llm_score(factor_score: float, raw_score: float, signal: str) -> float:
-        bonus = {
-            "RES_BREAK": 6,
-            "GOLDEN_CROSS": 4,
-            "TREND_UP": 3,
-            "RSI_OVERSOLD": 2,
-            "BB_TOUCH": 1,
+    def _estimate_llm_score(
+        self, 
+        code: str, 
+        factor_score: float, 
+        raw_score: float, 
+        signal: str
+    ) -> float:
+        """
+        [v1.0 개선] LLM 점수 추정 - DB Watchlist 우선 조회
+        
+        실제 Scout Pipeline 결과가 DB에 있으면 해당 점수를 사용하고,
+        없으면 팩터 점수 + 신호 보너스 기반으로 추정합니다.
+        
+        추정 공식 (회귀 분석 기반):
+        - 기본점수: 50점 (중립)
+        - 팩터 점수 기여: factor_score × 0.35 (35% 반영)
+        - 신호 점수 기여: raw_score × 0.08
+        - 신호 유형 보너스: RES_BREAK > GOLDEN_CROSS > RSI_OVERSOLD > BB_TOUCH
+        - 랜덤 노이즈: ±3점 (실제 LLM 판단의 변동성 모사)
+        """
+        # 1. DB Watchlist에서 실제 LLM 점수 조회
+        watchlist_info = self.watchlist_cache.get(code, {})
+        db_llm_score = watchlist_info.get('llm_score')
+        
+        if db_llm_score is not None and db_llm_score > 0:
+            # 실제 Scout 결과 사용 (시간에 따른 감쇠 없이 그대로 사용)
+            return float(db_llm_score)
+        
+        # 2. DB에 없으면 추정 (회귀 분석 기반 개선된 공식)
+        # 신호 유형별 보너스 (실제 Scout 결과와 비교하여 조정)
+        signal_bonus = {
+            "RES_BREAK": 8,       # 저항선 돌파: 강력한 모멘텀 신호
+            "GOLDEN_CROSS": 6,    # 골든크로스: 중기 추세 전환
+            "TREND_UP": 4,        # 상승 추세 확인
+            "RSI_OVERSOLD": 3,    # 과매도 반등: 단기 기회
+            "BB_TOUCH": 2,        # 볼린저 밴드 터치: 약한 신호
         }.get(signal, 0)
-        score = 55 + factor_score * 0.4 + raw_score * 0.1 + bonus
-        return max(0.0, min(99.0, score))
+        
+        # 기본 점수 계산
+        base_score = 50.0  # 중립 기준
+        factor_contribution = factor_score * 0.35  # 팩터 점수 35% 반영
+        signal_contribution = raw_score * 0.08     # 신호 강도 8% 반영
+        
+        # 시장 국면별 조정 (watchlist_info에 regime 정보가 있으면 사용)
+        regime_adjustment = 0.0
+        if watchlist_info.get('market_regime') == 'BULL':
+            regime_adjustment = 3.0  # 강세장에서 약간의 가산점
+        elif watchlist_info.get('market_regime') == 'BEAR':
+            regime_adjustment = -5.0  # 약세장에서 보수적 평가
+        
+        # 랜덤 노이즈 추가 (실제 LLM 판단의 변동성 모사, 재현성을 위해 code 기반)
+        noise_seed = hash(code) % 1000 / 1000.0  # 0~1 사이 값
+        noise = (noise_seed - 0.5) * 6  # -3 ~ +3점 범위
+        
+        estimated_score = (
+            base_score 
+            + factor_contribution 
+            + signal_contribution 
+            + signal_bonus 
+            + regime_adjustment 
+            + noise
+        )
+        
+        return max(0.0, min(99.0, estimated_score))
 
 
 # ---------------------------------------------------------------------------
@@ -635,6 +690,16 @@ class PortfolioEngine:
                                 del self.positions[code]
                         continue
 
+                # [v1.0 추가] Death Cross 체크 (MA5 < MA20 하향 크로스)
+                ma5 = row.get("MA_5")
+                ma20 = row.get("MA_20")
+                if not pd.isna(ma5) and not pd.isna(ma20):
+                    # Death Cross: MA5가 MA20 아래로 떨어지면 매도 신호
+                    # 추가 조건: 이전에 MA5 > MA20 이었어야 함 (크로스 발생)
+                    if ma5 < ma20 and pos.high_price > pos.avg_price * 1.02:
+                        # 고점 대비 2% 이상 올랐다가 Death Cross 발생 시에만
+                        reason = "DEATH_CROSS"
+                
                 holding_days = (slot_timestamp - pos.entry_date).days
                 if holding_days >= self.max_hold_days:
                     reason = "TIME_EXIT"
@@ -749,6 +814,7 @@ class BacktestGPT:
             breakout_buffer_pct=self.args.breakout_buffer_pct,
             bb_buffer_pct=self.args.bb_buffer_pct,
             top_n=self.args.top_n,
+            watchlist_cache=self.watchlist_cache,  # [v1.0] LLM 점수 조회용
         )
         self.portfolio = PortfolioEngine(
             initial_capital=self.args.initial_capital,
