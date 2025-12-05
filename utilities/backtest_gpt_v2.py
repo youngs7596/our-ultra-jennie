@@ -71,21 +71,22 @@ TOP_TRADING_LOOKBACK_DAYS = 30
 
 
 def fetch_top_trading_value_codes(connection, limit: int = TOP_TRADING_LIMIT, lookback_days: int = TOP_TRADING_LOOKBACK_DAYS) -> List[str]:
-    query = f"""
-        SELECT STOCK_CODE
-        FROM (
-            SELECT STOCK_CODE, AVG(CLOSE_PRICE * VOLUME) AS AVG_AMT
-            FROM STOCK_DAILY_PRICES_3Y
-            WHERE PRICE_DATE >= SYSDATE - :1
-            GROUP BY STOCK_CODE
-            ORDER BY AVG_AMT DESC
-        )
-        WHERE ROWNUM <= :2
+    # [v1.0] MariaDB 호환 쿼리
+    query = """
+        SELECT STOCK_CODE, AVG(CLOSE_PRICE * VOLUME) AS AVG_AMT
+        FROM STOCK_DAILY_PRICES_3Y
+        WHERE PRICE_DATE >= CURDATE() - INTERVAL %s DAY
+        GROUP BY STOCK_CODE
+        ORDER BY AVG_AMT DESC
+        LIMIT %s
     """
     cursor = connection.cursor()
     try:
-        cursor.execute(query, [lookback_days, limit])
+        cursor.execute(query, (lookback_days, limit))
         rows = cursor.fetchall()
+        # DictCursor일 경우와 일반 cursor 모두 처리
+        if rows and isinstance(rows[0], dict):
+            return [row['STOCK_CODE'] for row in rows if row['STOCK_CODE'] != "0001"]
         return [row[0] for row in rows if row[0] != "0001"]
     except Exception as exc:
         logger.warning(f"거래대금 상위 종목 로드 실패: {exc}")
@@ -105,15 +106,16 @@ SLOT_COUNT = (MARKET_CLOSE_MINUTES - MARKET_OPEN_MINUTES) // INTRADAY_INTERVAL_M
 
 
 def load_price_series(connection, stock_code: str) -> pd.DataFrame:
+    # [v1.0] MariaDB 호환 쿼리
     query = """
         SELECT PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
         FROM STOCK_DAILY_PRICES_3Y
-        WHERE STOCK_CODE = :1
+        WHERE STOCK_CODE = %s
         ORDER BY PRICE_DATE ASC
     """
     cursor = connection.cursor()
     try:
-        cursor.execute(query, [stock_code])
+        cursor.execute(query, (stock_code,))
         rows = cursor.fetchall()
     finally:
         cursor.close()
@@ -121,7 +123,12 @@ def load_price_series(connection, stock_code: str) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
 
-    df = pd.DataFrame(rows, columns=["PRICE_DATE", "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "CLOSE_PRICE", "VOLUME"])
+    # DictCursor일 경우 처리
+    if rows and isinstance(rows[0], dict):
+        df = pd.DataFrame(rows)
+    else:
+        df = pd.DataFrame(rows, columns=["PRICE_DATE", "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "CLOSE_PRICE", "VOLUME"])
+    
     df["PRICE_DATE"] = pd.to_datetime(df["PRICE_DATE"])
     df.set_index("PRICE_DATE", inplace=True)
     return df
@@ -1045,10 +1052,11 @@ class BacktestGPT:
 
         segments = len(key_points) - 1
         steps_remaining = slots - 1
+        extras = steps_remaining % segments if segments > 0 else 0
 
         path = [max(0.0, key_points[0])]
         for idx in range(segments):
-            base_steps = max(1, steps_remaining // (segments - idx))
+            base_steps = max(1, steps_remaining // segments) if segments > 0 else 1
             start = key_points[idx]
             end = key_points[idx + 1]
             steps = base_steps + (1 if idx < extras else 0)
@@ -1235,18 +1243,40 @@ def main() -> None:
     if os.path.exists(env_path):
         load_dotenv(env_path)
 
-    project_id = os.getenv("GCP_PROJECT_ID")
-    db_user = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_USER"), project_id)
-    db_password = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"), project_id)
-    wallet_path = os.path.join(PROJECT_ROOT, os.getenv("OCI_WALLET_DIR_NAME", "wallet"))
-    db_service_name = os.getenv("OCI_DB_SERVICE_NAME")
+    # [v1.0] secrets.json 경로 설정 (로컬 실행용)
+    secrets_path = os.path.join(PROJECT_ROOT, "secrets.json")
+    if os.path.exists(secrets_path):
+        os.environ.setdefault("SECRETS_FILE", secrets_path)
 
-    connection = database.get_db_connection(
-        db_user=db_user,
-        db_password=db_password,
-        db_service_name=db_service_name,
-        wallet_path=wallet_path,
-    )
+    # [v1.0] MariaDB 연결 (환경변수에서 직접 읽음)
+    # 필요한 환경변수: MARIADB_HOST, MARIADB_PORT, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DBNAME
+    # 또는 secrets.json의 mariadb-user, mariadb-password 사용
+    
+    # secrets.json에서 DB 정보 로드 시도
+    mariadb_user = auth.get_secret("mariadb-user")
+    mariadb_password = auth.get_secret("mariadb-password")
+    
+    # 환경변수 설정 (get_db_connection에서 사용)
+    if mariadb_user:
+        os.environ.setdefault("MARIADB_USER", mariadb_user)
+    if mariadb_password:
+        os.environ.setdefault("MARIADB_PASSWORD", mariadb_password)
+    os.environ.setdefault("MARIADB_HOST", "127.0.0.1")
+    os.environ.setdefault("MARIADB_PORT", "3306")
+    os.environ.setdefault("MARIADB_DBNAME", "jennie_db")
+    os.environ.setdefault("DB_TYPE", "MARIADB")
+
+    connection = database.get_db_connection()
+    
+    if connection is None:
+        # SQLAlchemy 엔진에서 직접 연결 획득 시도
+        from shared.db import connection as sa_connection
+        engine = sa_connection.get_engine()
+        if engine is not None:
+            connection = engine.raw_connection()
+            logger.info("✅ SQLAlchemy 엔진에서 직접 연결 획득 성공!")
+        else:
+            raise RuntimeError("❌ DB 연결을 얻을 수 없습니다. MariaDB가 실행 중인지 확인하세요.")
 
     try:
         runner = BacktestGPT(connection, args)
