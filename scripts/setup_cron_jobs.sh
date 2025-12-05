@@ -11,6 +11,7 @@
 #
 # 등록되는 작업:
 #   - 주간 팩터 분석: 매주 일요일 오전 3시
+#   - 일일 브리핑: 평일 오후 5시
 # =============================================================================
 
 set -euo pipefail
@@ -29,6 +30,7 @@ fi
 # Cron job 정의
 CRON_MARKER="# Ultra Jennie Cron Jobs"
 WEEKLY_FACTOR_SCRIPT="${PROJECT_ROOT}/scripts/weekly_factor_analysis_batch.py"
+DAILY_BRIEFING_SCRIPT="${PROJECT_ROOT}/scripts/run_daily_briefing.py"
 LOG_DIR="${PROJECT_ROOT}/logs/cron"
 
 # 로그 디렉토리 생성
@@ -52,6 +54,12 @@ Ultra Jennie Cron Job 설정 스크립트
      - 외국인/기관 수급 데이터 수집
      - 분기별 재무 데이터 수집
      - 팩터 분석 실행
+
+  📊 일일 브리핑 (평일 오후 5시)
+     - 포트폴리오 현황
+     - 오늘 거래 내역
+     - AI 추천 종목 TOP 5
+     - 텔레그램 발송
 EOF
 }
 
@@ -82,7 +90,9 @@ install_jobs() {
     # 새 cron job 정의
     NEW_CRON="$CRON_MARKER
 # 주간 팩터 분석 - 매주 일요일 오전 3시
-0 3 * * 0 cd ${PROJECT_ROOT} && PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${WEEKLY_FACTOR_SCRIPT} >> ${LOG_DIR}/weekly_factor_\$(date +\\%Y\\%m\\%d).log 2>&1"
+0 3 * * 0 cd ${PROJECT_ROOT} && PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${WEEKLY_FACTOR_SCRIPT} >> ${LOG_DIR}/weekly_factor_\$(date +\\%Y\\%m\\%d).log 2>&1
+# 일일 브리핑 - 평일 오후 5시 (월~금)
+0 17 * * 1-5 cd ${PROJECT_ROOT} && PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${DAILY_BRIEFING_SCRIPT} >> ${LOG_DIR}/daily_briefing_\$(date +\\%Y\\%m\\%d).log 2>&1"
 
     # crontab 업데이트
     if [[ -n "$EXISTING_CRON" ]]; then
@@ -95,12 +105,17 @@ install_jobs() {
     echo ""
     echo "📅 등록된 스케줄:"
     echo "   - 주간 팩터 분석: 매주 일요일 오전 3시"
+    echo "   - 일일 브리핑: 평일(월~금) 오후 5시"
     echo ""
     echo "📁 로그 위치: ${LOG_DIR}/"
     echo ""
     echo "💡 수동 실행 방법:"
+    echo "   # 주간 팩터 분석"
     echo "   cd ${PROJECT_ROOT}"
     echo "   PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${WEEKLY_FACTOR_SCRIPT}"
+    echo ""
+    echo "   # 일일 브리핑"
+    echo "   PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${DAILY_BRIEFING_SCRIPT}"
 }
 
 # 메인 로직
