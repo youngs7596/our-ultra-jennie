@@ -5,6 +5,8 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine
+
+from shared.auth import get_secret
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import scoped_session, sessionmaker, Session
@@ -19,18 +21,19 @@ _engine_config: dict = {}
 def _build_connection_url() -> str:
     """
     MariaDB 연결 URL을 생성합니다.
+    환경변수 → secrets.json 순서로 읽습니다.
     """
     logger.info("DB 연결 타입: MARIADB")
 
-    # MariaDB (MySQL 호환) 연결 설정
-    user = os.getenv("MARIADB_USER", "root")
-    password = os.getenv("MARIADB_PASSWORD", "password")
-    host = os.getenv("MARIADB_HOST", "localhost")
+    # MariaDB (MySQL 호환) 연결 설정 - 환경변수 우선, 없으면 secrets.json
+    user = os.getenv("MARIADB_USER") or get_secret("mariadb-user") or "root"
+    password = os.getenv("MARIADB_PASSWORD") or get_secret("mariadb-password") or ""
+    host = os.getenv("MARIADB_HOST") or get_secret("mariadb-host") or "localhost"
     port = os.getenv("MARIADB_PORT", "3306")
-    dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
+    dbname = os.getenv("MARIADB_DBNAME") or get_secret("mariadb-database") or "jennie_db"
 
     if not all([user, password, host, port, dbname]):
-        raise ValueError("MariaDB 접속 정보를 확인할 수 없습니다. (MARIADB_* 환경 변수 필요)")
+        raise ValueError("MariaDB 접속 정보를 확인할 수 없습니다. (MARIADB_* 환경변수 또는 secrets.json 필요)")
 
     user_enc = quote_plus(user)
     password_enc = quote_plus(password)

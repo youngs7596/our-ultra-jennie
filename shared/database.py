@@ -526,14 +526,16 @@ def get_connection(max_retries=3, retry_delay=1, validate_connection=True):
         return None
     
     import pymysql
+    from shared.auth import get_secret
     
     for attempt in range(1, max_retries + 1):
         try:
-            host = os.getenv("MARIADB_HOST", "localhost")
+            # 환경변수 우선, 없으면 secrets.json에서 읽기
+            host = os.getenv("MARIADB_HOST") or get_secret("mariadb-host") or "localhost"
             port = int(os.getenv("MARIADB_PORT", "3306"))
-            user = os.getenv("MARIADB_USER", "root")
-            password = os.getenv("MARIADB_PASSWORD", "")
-            dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
+            user = os.getenv("MARIADB_USER") or get_secret("mariadb-user") or "root"
+            password = os.getenv("MARIADB_PASSWORD") or get_secret("mariadb-password") or ""
+            dbname = os.getenv("MARIADB_DBNAME") or get_secret("mariadb-database") or "jennie_db"
             
             conn = pymysql.connect(
                 host=host,
