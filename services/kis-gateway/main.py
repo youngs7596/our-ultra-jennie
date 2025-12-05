@@ -179,28 +179,19 @@ def initialize_kis_client():
         return False
 
 def initialize_db_pool():
-    """Oracle DB 연결 풀 초기화 (일봉 데이터 DB fallback용)"""
+    """MariaDB 연결 풀 초기화 (일봉 데이터 DB fallback용)"""
     global db_pool_initialized
     if db_pool_initialized:
         return True
 
     try:
-        db_user = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_USER"), os.getenv("GCP_PROJECT_ID"))
-        db_password = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"), os.getenv("GCP_PROJECT_ID"))
-        db_service_name = os.getenv("OCI_DB_SERVICE_NAME")
-        wallet_path = os.getenv("OCI_WALLET_DIR_NAME", "/app/wallet")
-
-        database.init_connection_pool(
-            db_user=db_user,
-            db_password=db_password,
-            db_service_name=db_service_name,
-            wallet_path=wallet_path,
-            min_sessions=1,
-            max_sessions=5,
-            increment=1
-        )
+        # MariaDB 연결 정보는 secrets.json 또는 환경변수에서 로드
+        # shared/db/connection.py의 init_engine()이 자동으로 처리
+        from shared.db.connection import init_engine, ensure_engine_initialized
+        
+        ensure_engine_initialized()
         db_pool_initialized = True
-        logger.info("✅ KIS Gateway DB 연결 풀 초기화 완료")
+        logger.info("✅ KIS Gateway DB 연결 풀 초기화 완료 (MariaDB)")
         return True
     except Exception as e:
         logger.error(f"❌ KIS Gateway DB 연결 풀 초기화 실패: {e}", exc_info=True)
@@ -208,7 +199,7 @@ def initialize_db_pool():
 
 
 def fetch_daily_prices_from_db(stock_code: str, limit: int):
-    """Oracle DB에서 일봉 데이터를 조회 (Fallback 용도)"""
+    """MariaDB에서 일봉 데이터를 조회 (Fallback 용도)"""
     if not initialize_db_pool():
         return None
 
