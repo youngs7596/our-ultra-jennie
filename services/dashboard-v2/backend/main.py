@@ -69,10 +69,10 @@ def setup_db_credentials():
     if not os.getenv("MARIADB_USER"):
         os.environ["MARIADB_USER"] = secrets.get("mariadb-user", "root")
     if not os.getenv("MARIADB_PASSWORD"):
-        os.environ["MARIADB_PASSWORD"] = secrets.get("mariadb-password", "q1w2e3R$")
+        os.environ["MARIADB_PASSWORD"] = secrets.get("mariadb-password", "your-db-password")
     if not os.getenv("MARIADB_HOST"):
         # Docker 컨테이너에서 Windows MariaDB 접근: host-gateway 사용
-        os.environ["MARIADB_HOST"] = secrets.get("mariadb-host", "172.17.0.1")
+        os.environ["MARIADB_HOST"] = secrets.get("mariadb-host", "127.0.0.1")
     if not os.getenv("MARIADB_PORT"):
         os.environ["MARIADB_PORT"] = secrets.get("mariadb-port", "3306")
     if not os.getenv("MARIADB_DBNAME"):
@@ -84,7 +84,7 @@ def setup_db_credentials():
 setup_db_credentials()
 
 # --- 환경 변수 ---
-JWT_SECRET = os.getenv("JWT_SECRET", "my-supreme-jennie-jwt-secret-2025")
+JWT_SECRET = os.getenv("JWT_SECRET", "your-jwt-secret-here")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24 * 7  # 7일
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

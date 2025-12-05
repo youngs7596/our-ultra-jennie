@@ -551,7 +551,7 @@ services:
     env_file:
       - infrastructure/env-vars-wsl.yaml
     environment:
-      - JWT_SECRET=${JWT_SECRET:-my-supreme-jennie-jwt-secret-2025}
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-here}
       - REDIS_URL=redis://127.0.0.1:6379/0
       - KIS_GATEWAY_URL=http://127.0.0.1:8080
       - SECRETS_FILE=/app/config/secrets.json
