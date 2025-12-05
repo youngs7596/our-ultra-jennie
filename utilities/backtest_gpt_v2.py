@@ -366,7 +366,11 @@ class ScannerLite:
                     metadata = {"res_20": res_20, "price": price}
 
             if signal:
-                factor_score = self._compute_factor_score(df_window, kospi_slice, regime)
+                # [v1.0 Fix] Look-Ahead Bias 제거: 팩터 점수 계산 시 당일 제외
+                # 장중에는 당일 종가를 알 수 없으므로 전일까지의 데이터만 사용
+                df_window_for_factor = df_window.iloc[:-1] if len(df_window) > 1 else df_window
+                kospi_slice_for_factor = kospi_slice.iloc[:-1] if len(kospi_slice) > 1 else kospi_slice
+                factor_score = self._compute_factor_score(df_window_for_factor, kospi_slice_for_factor, regime)
                 llm_score = self._estimate_llm_score(code, factor_score, score, signal)
                 name = self.stock_names.get(code, code)
                 metadata = {**metadata, "name": name}
@@ -412,59 +416,41 @@ class ScannerLite:
         signal: str
     ) -> float:
         """
-        [v1.0 개선] LLM 점수 추정 - DB Watchlist 우선 조회
+        [v1.1 Fix] LLM 점수 추정 - 순수 추정 공식 (Look-Ahead Bias 제거)
         
-        실제 Scout Pipeline 결과가 DB에 있으면 해당 점수를 사용하고,
-        없으면 팩터 점수 + 신호 보너스 기반으로 추정합니다.
+        DB Watchlist 조회를 제거하고 전일까지의 팩터 점수만 사용하여 추정합니다.
+        이렇게 해야 과거 시점에서 알 수 있었던 정보만 사용하게 됩니다.
         
-        추정 공식 (회귀 분석 기반):
-        - 기본점수: 50점 (중립)
-        - 팩터 점수 기여: factor_score × 0.35 (35% 반영)
-        - 신호 점수 기여: raw_score × 0.08
+        추정 공식:
+        - 기본점수: 55점 (Scout이 통과시키는 평균 수준)
+        - 팩터 점수 기여: factor_score × 0.4 (40% 반영)
+        - 신호 점수 기여: raw_score × 0.1 (10% 반영)
         - 신호 유형 보너스: RES_BREAK > GOLDEN_CROSS > RSI_OVERSOLD > BB_TOUCH
-        - 랜덤 노이즈: ±3점 (실제 LLM 판단의 변동성 모사)
+        
+        Note: DB 조회를 사용하지 않는 이유
+        - DB의 LLM 점수는 "현재" Scout이 부여한 점수
+        - 과거 시점을 시뮬레이션할 때 현재 점수를 사용하면 Look-Ahead Bias 발생
+        - 따라서 과거 데이터(팩터 점수)만으로 추정하는 것이 더 정확함
         """
-        # 1. DB Watchlist에서 실제 LLM 점수 조회
-        watchlist_info = self.watchlist_cache.get(code, {})
-        db_llm_score = watchlist_info.get('llm_score')
-        
-        if db_llm_score is not None and db_llm_score > 0:
-            # 실제 Scout 결과 사용 (시간에 따른 감쇠 없이 그대로 사용)
-            return float(db_llm_score)
-        
-        # 2. DB에 없으면 추정 (회귀 분석 기반 개선된 공식)
-        # 신호 유형별 보너스 (실제 Scout 결과와 비교하여 조정)
+        # 신호 유형별 보너스 (Scout의 선호도 반영)
         signal_bonus = {
-            "RES_BREAK": 8,       # 저항선 돌파: 강력한 모멘텀 신호
-            "GOLDEN_CROSS": 6,    # 골든크로스: 중기 추세 전환
-            "TREND_UP": 4,        # 상승 추세 확인
-            "RSI_OVERSOLD": 3,    # 과매도 반등: 단기 기회
-            "BB_TOUCH": 2,        # 볼린저 밴드 터치: 약한 신호
+            "RES_BREAK": 6,       # 저항선 돌파: 강력한 모멘텀 신호
+            "GOLDEN_CROSS": 4,    # 골든크로스: 중기 추세 전환
+            "TREND_UP": 3,        # 상승 추세 확인
+            "RSI_OVERSOLD": 2,    # 과매도 반등: 단기 기회
+            "BB_TOUCH": 1,        # 볼린저 밴드 터치: 약한 신호
         }.get(signal, 0)
         
-        # 기본 점수 계산
-        base_score = 50.0  # 중립 기준
-        factor_contribution = factor_score * 0.35  # 팩터 점수 35% 반영
-        signal_contribution = raw_score * 0.08     # 신호 강도 8% 반영
-        
-        # 시장 국면별 조정 (watchlist_info에 regime 정보가 있으면 사용)
-        regime_adjustment = 0.0
-        if watchlist_info.get('market_regime') == 'BULL':
-            regime_adjustment = 3.0  # 강세장에서 약간의 가산점
-        elif watchlist_info.get('market_regime') == 'BEAR':
-            regime_adjustment = -5.0  # 약세장에서 보수적 평가
-        
-        # 랜덤 노이즈 추가 (실제 LLM 판단의 변동성 모사, 재현성을 위해 code 기반)
-        noise_seed = hash(code) % 1000 / 1000.0  # 0~1 사이 값
-        noise = (noise_seed - 0.5) * 6  # -3 ~ +3점 범위
+        # 기본 점수 계산 (Scout 통과 평균 수준에서 시작)
+        base_score = 55.0
+        factor_contribution = factor_score * 0.4   # 팩터 점수 40% 반영
+        signal_contribution = raw_score * 0.1      # 신호 강도 10% 반영
         
         estimated_score = (
             base_score 
             + factor_contribution 
             + signal_contribution 
-            + signal_bonus 
-            + regime_adjustment 
-            + noise
+            + signal_bonus
         )
         
         return max(0.0, min(99.0, estimated_score))
@@ -800,7 +786,24 @@ class BacktestGPT:
         end = kospi_df.index.max()
         if days:
             start = max(start, end - timedelta(days=days))
-        self.calendar = list(kospi_df.loc[start:end].index)
+        full_calendar = list(kospi_df.loc[start:end].index)
+        
+        # [v1.1] Out-of-Sample 테스트: train/test 분할
+        train_ratio = getattr(self.args, 'train_ratio', 1.0)
+        if train_ratio < 1.0 and len(full_calendar) > 10:
+            split_idx = int(len(full_calendar) * train_ratio)
+            self.train_calendar = full_calendar[:split_idx]
+            self.test_calendar = full_calendar[split_idx:]
+            self.oos_start_date = self.test_calendar[0] if self.test_calendar else None
+            logger.info(f"📊 Out-of-Sample 분할: Train {len(self.train_calendar)}일 | Test {len(self.test_calendar)}일")
+            logger.info(f"   Train: {self.train_calendar[0].strftime('%Y-%m-%d')} ~ {self.train_calendar[-1].strftime('%Y-%m-%d')}")
+            logger.info(f"   Test:  {self.test_calendar[0].strftime('%Y-%m-%d')} ~ {self.test_calendar[-1].strftime('%Y-%m-%d')}")
+        else:
+            self.train_calendar = full_calendar
+            self.test_calendar = []
+            self.oos_start_date = None
+        
+        self.calendar = full_calendar
 
     def _init_components(self) -> None:
         stock_names = {code: meta.get("name", code) for code, meta in self.stock_metadata.items()}
@@ -1144,6 +1147,7 @@ class BacktestGPT:
 
     def _report(self) -> Dict[str, float]:
         equity_curve = [entry["equity"] for entry in self.trade_log if entry.get("type") == "EOD"]
+        eod_entries = [entry for entry in self.trade_log if entry.get("type") == "EOD"]
         last_equity = equity_curve[-1] if equity_curve else self.portfolio.initial_capital
         total_return_pct = (last_equity / self.portfolio.initial_capital - 1) * 100
         peak = -float("inf")
@@ -1171,7 +1175,7 @@ class BacktestGPT:
 
         monthly_target_pct = 1.4
 
-        logger.info("=== 백테스트 결과 ===")
+        logger.info("=== 백테스트 결과 (전체 기간) ===")
         logger.info("최종 누적 수익률: %.2f%%", stats["total_return_pct"])
         logger.info(
             f"최종 자산: {stats['final_equity']:,.0f}원 (초기: {self.portfolio.initial_capital:,.0f}원)"
@@ -1183,11 +1187,54 @@ class BacktestGPT:
             monthly_target_pct,
             " ✅" if stats["monthly_return_pct"] >= monthly_target_pct else "",
         )
-        logger.info("최종 누적 수익률: %.2f%%", stats["total_return_pct"])
-        logger.info("최대 낙폭(MDD): %.2f%%", stats["mdd_pct"])
-        logger.info("월간 수익률: %.2f%%", stats["monthly_return_pct"])
-        logger.info("최종 자산: %s원", f"{stats['final_equity']:,.0f}")
         logger.info("누적 거래 횟수: %d회 | 보유 중인 포지션: %d개", stats["trades"], stats["open_positions"])
+        
+        # [v1.1] Out-of-Sample 기간 성과 별도 출력
+        if self.oos_start_date is not None and self.test_calendar:
+            oos_eod_entries = [e for e in eod_entries if e.get("date") >= self.oos_start_date]
+            if oos_eod_entries:
+                # OOS 시작 시점의 자산 (Train 기간 종료 시점)
+                train_eod_entries = [e for e in eod_entries if e.get("date") < self.oos_start_date]
+                oos_start_equity = train_eod_entries[-1]["equity"] if train_eod_entries else self.portfolio.initial_capital
+                oos_end_equity = oos_eod_entries[-1]["equity"]
+                
+                oos_return_pct = (oos_end_equity / oos_start_equity - 1) * 100
+                
+                # OOS MDD 계산
+                oos_equity_curve = [e["equity"] for e in oos_eod_entries]
+                oos_peak = oos_start_equity
+                oos_mdd = 0.0
+                for val in oos_equity_curve:
+                    if val > oos_peak:
+                        oos_peak = val
+                    dd = (val - oos_peak) / oos_peak if oos_peak > 0 else 0
+                    oos_mdd = min(oos_mdd, dd)
+                
+                # OOS 월간 수익률
+                oos_days = len(oos_equity_curve)
+                oos_monthly = 0.0
+                if oos_days > 0 and oos_end_equity > 0 and oos_start_equity > 0:
+                    oos_monthly = ((oos_end_equity / oos_start_equity) ** (30 / oos_days) - 1) * 100
+                
+                stats["oos_return_pct"] = oos_return_pct
+                stats["oos_mdd_pct"] = oos_mdd * 100
+                stats["oos_monthly_pct"] = oos_monthly
+                stats["oos_days"] = oos_days
+                
+                logger.info("")
+                logger.info("=== 🎯 Out-of-Sample 결과 (테스트 기간) ===")
+                logger.info(f"테스트 기간: {self.test_calendar[0].strftime('%Y-%m-%d')} ~ {self.test_calendar[-1].strftime('%Y-%m-%d')} ({oos_days}일)")
+                logger.info(f"OOS 시작 자산: {oos_start_equity:,.0f}원 → 종료: {oos_end_equity:,.0f}원")
+                logger.info(f"OOS 수익률: {oos_return_pct:.2f}%")
+                logger.info(f"OOS MDD: {oos_mdd * 100:.2f}%")
+                logger.info(f"OOS 월간 수익률: {oos_monthly:.2f}%")
+                
+                # OOS 기간만 보고 싶은 경우 stats 교체
+                if getattr(self.args, 'oos_only', False):
+                    logger.info("⚠️ --oos-only 옵션 활성화: OOS 결과만 반환합니다.")
+                    stats["total_return_pct"] = oos_return_pct
+                    stats["mdd_pct"] = oos_mdd * 100
+                    stats["monthly_return_pct"] = oos_monthly
         logger.info("--- ✅ 백테스트 완료 ---")
 
         try:
@@ -1269,6 +1316,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-level", type=str, default="INFO")
     parser.add_argument("--log-dir", type=str, default="logs", help="자동 로그 저장 디렉터리")
     parser.add_argument("--seed", type=int, default=67, help="랜덤 시드 (기본값 67)")
+    
+    # [v1.1] Out-of-Sample 테스트 옵션
+    parser.add_argument("--train-ratio", type=float, default=1.0,
+                        help="학습 기간 비율 (0.0~1.0). 예: 0.7이면 앞 70%는 학습, 뒤 30%는 테스트. "
+                             "1.0이면 전체 기간을 학습+테스트로 사용 (기본값)")
+    parser.add_argument("--oos-only", action="store_true",
+                        help="Out-of-Sample 기간 성과만 출력 (--train-ratio < 1.0 일 때만 유효)")
+    
     args = parser.parse_args()
     apply_strategy_defaults(args)
     return args
