@@ -2238,7 +2238,7 @@ class Backtester:
         sold_ratio = pos.get("sold_ratio", 0.0)
         remaining_ratio = 1.0 - sold_ratio
 
-        # [v3.1] 동적 리스크 설정 가져오기
+        # [v1.0] 동적 리스크 설정 가져오기
         risk_setting = self.market_regime_detector.get_dynamic_risk_setting(regime)
         
         # [v14.7] 오버라이드 설정 확인 (로그 스팸 방지를 위해 기본값 사용)

@@ -8,7 +8,7 @@
 # - 소스: KIS API (전체 종목 다운로드)
 # - 저장: DB 테이블 STOCK_MASTER (MariaDB/Oracle 지원)
 #
-# [v2.0] MariaDB 지원 추가 (Claude Opus 4.5)
+# [v1.0] MariaDB 지원
 
 import os
 import sys

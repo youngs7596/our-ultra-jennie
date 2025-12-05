@@ -1,10 +1,15 @@
-# youngs75_jennie/strategy_presets.py
-# Version: v3.5
+# shared/strategy_presets.py
+# Version: v1.0
 """
-Strategy preset loader & utilities.
+Strategy Preset Loader & Utilities - v1.0
 
 이 모듈은 gpt_v2_strategy_presets.json 파일을 로드하여
 백테스트/실전 서비스 모두가 동일한 파라미터 세트를 공유하도록 돕는다.
+
+주요 기능:
+- 전략 프리셋 JSON 로드 (캐시됨)
+- 시장 국면(Regime)에 따른 프리셋 자동 선택
+- ConfigManager에 프리셋 값 주입
 """
 
 from __future__ import annotations
