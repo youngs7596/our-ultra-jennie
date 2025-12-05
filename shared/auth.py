@@ -59,10 +59,23 @@ def _load_local_secrets():
     if _local_secrets_cache is not None:
         return _local_secrets_cache
 
-    secrets_path = os.getenv("SECRETS_FILE", "/app/config/secrets.json")
-    path = Path(secrets_path)
+    # secrets.json 경로 탐색 순서:
+    # 1. SECRETS_FILE 환경변수
+    # 2. /app/config/secrets.json (Docker 컨테이너)
+    # 3. 프로젝트 루트의 secrets.json (로컬 개발)
+    secrets_path = os.getenv("SECRETS_FILE")
+    if secrets_path:
+        path = Path(secrets_path)
+    else:
+        # Docker 컨테이너 경로 먼저 확인
+        path = Path("/app/config/secrets.json")
+        if not path.exists():
+            # 로컬 개발 환경: 현재 파일 기준으로 프로젝트 루트 찾기
+            project_root = Path(__file__).parent.parent  # shared/ → project_root
+            path = project_root / "secrets.json"
+    
     if not path.exists():
-        logger.info("ℹ️ secrets.json(%s)이 존재하지 않습니다. Secret Manager 또는 환경 변수로 fallback 합니다.", secrets_path)
+        logger.info("ℹ️ secrets.json(%s)이 존재하지 않습니다. Secret Manager 또는 환경 변수로 fallback 합니다.", path)
         _local_secrets_cache = {}
         return _local_secrets_cache
 
