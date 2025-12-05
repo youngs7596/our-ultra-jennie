@@ -242,12 +242,23 @@ cp secrets.example.json secrets.json
 
 ```json
 {
-  "KIS_API_KEY": "your-kis-api-key",
-  "KIS_API_SECRET": "your-kis-api-secret",
-  "KIS_ACCOUNT": "your-account-number",
-  "GOOGLE_API_KEY": "your-gemini-api-key",
-  "ANTHROPIC_API_KEY": "your-claude-api-key",
-  "OPENAI_API_KEY": "your-openai-api-key"
+  "gemini-api-key": "your-gemini-api-key",
+  "openai-api-key": "your-openai-api-key",
+  "claude-api-key": "your-claude-api-key",
+  "dart-api-key": "your-dart-api-key",
+  "kis-r-account-no": "your-real-account-number",
+  "kis-r-app-key": "your-real-app-key",
+  "kis-r-app-secret": "your-real-app-secret",
+  "kis-v-account-no": "your-virtual-account-number",
+  "kis-v-app-key": "your-virtual-app-key",
+  "kis-v-app-secret": "your-virtual-app-secret",
+  "telegram-bot-token": "your-telegram-bot-token",
+  "telegram-chat-id": "your-telegram-chat-id",
+  "cloudflare-tunnel-token": "your-cloudflare-token",
+  "mariadb-user": "root",
+  "mariadb-password": "your-db-password",
+  "mariadb-host": "127.0.0.1",
+  "mariadb-database": "jennie_db"
 }
 ```
 
