@@ -34,11 +34,9 @@ def ensure_gemini_api_key() -> str:
         return _cached_gemini_api_key
 
     secret_id = os.getenv("SECRET_ID_GEMINI_API_KEY", "gemini-api-key")
-    project_id = os.getenv("GCP_PROJECT_ID")
+    project_id = os.getenv("GCP_PROJECT_ID", "local")  # 로컬 환경에서는 "local" 사용
 
-    if not secret_id or not project_id:
-        raise RuntimeError("Gemini API Key 환경변수가 설정되지 않았습니다. (SECRET_ID_GEMINI_API_KEY/GCP_PROJECT_ID)")
-
+    # 먼저 secrets.json에서 직접 로드 시도
     api_key = auth.get_secret(secret_id, project_id)
     if not api_key:
         raise RuntimeError(f"Gemini API Key를 Secret '{secret_id}'에서 찾을 수 없습니다.")
