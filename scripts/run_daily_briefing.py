@@ -55,7 +55,7 @@ def get_portfolio_summary(connection) -> dict:
         # DictCursor 사용
         cursor = connection.cursor(pymysql.cursors.DictCursor)
         
-        # 보유 종목 조회 (STOCK_MASTER와 JOIN)
+        # 보유 종목 조회 (STOCK_MASTER와 JOIN - COLLATE 명시)
         cursor.execute("""
             SELECT 
                 p.STOCK_CODE, 
@@ -65,7 +65,7 @@ def get_portfolio_summary(connection) -> dict:
                 p.CURRENT_HIGH_PRICE, 
                 p.STATUS
             FROM PORTFOLIO p
-            LEFT JOIN STOCK_MASTER m ON p.STOCK_CODE = m.STOCK_CODE
+            LEFT JOIN STOCK_MASTER m ON p.STOCK_CODE COLLATE utf8mb4_unicode_ci = m.STOCK_CODE COLLATE utf8mb4_unicode_ci
             WHERE p.QUANTITY > 0 AND p.STATUS = 'HOLDING'
             ORDER BY p.QUANTITY DESC
         """)
@@ -80,7 +80,7 @@ def get_portfolio_summary(connection) -> dict:
                 t.QUANTITY, 
                 t.PRICE
             FROM TRADELOG t
-            LEFT JOIN STOCK_MASTER m ON t.STOCK_CODE = m.STOCK_CODE
+            LEFT JOIN STOCK_MASTER m ON t.STOCK_CODE COLLATE utf8mb4_unicode_ci = m.STOCK_CODE COLLATE utf8mb4_unicode_ci
             WHERE DATE(t.TRADE_TIMESTAMP) = CURDATE()
             ORDER BY t.TRADE_TIMESTAMP DESC
             LIMIT 10
