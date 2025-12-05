@@ -91,8 +91,8 @@ install_jobs() {
     NEW_CRON="$CRON_MARKER
 # 주간 팩터 분석 - 매주 일요일 오전 3시
 0 3 * * 0 cd ${PROJECT_ROOT} && PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${WEEKLY_FACTOR_SCRIPT} >> ${LOG_DIR}/weekly_factor_\$(date +\\%Y\\%m\\%d).log 2>&1
-# 일일 브리핑 - 평일 오후 5시 (월~금)
-0 17 * * 1-5 cd ${PROJECT_ROOT} && PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${DAILY_BRIEFING_SCRIPT} >> ${LOG_DIR}/daily_briefing_\$(date +\\%Y\\%m\\%d).log 2>&1"
+# 일일 브리핑 - 평일 오후 5시 (월~금) - Docker 서비스 직접 호출
+0 17 * * 1-5 curl -s -X POST http://localhost:8086/report >> ${LOG_DIR}/daily_briefing_\$(date +\\%Y\\%m\\%d).log 2>&1"
 
     # crontab 업데이트
     if [[ -n "$EXISTING_CRON" ]]; then
@@ -114,8 +114,8 @@ install_jobs() {
     echo "   cd ${PROJECT_ROOT}"
     echo "   PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${WEEKLY_FACTOR_SCRIPT}"
     echo ""
-    echo "   # 일일 브리핑"
-    echo "   PYTHONPATH=${PROJECT_ROOT} ${PYTHON_PATH} ${DAILY_BRIEFING_SCRIPT}"
+    echo "   # 일일 브리핑 (Docker 서비스 호출)"
+    echo "   curl -X POST http://localhost:8086/report"
 }
 
 # 메인 로직
