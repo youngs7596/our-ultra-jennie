@@ -1,15 +1,10 @@
 #
-# my-supreme-jennie 환경 변수 (WSL2 + Docker 배포 전용)
-# Cloud Run 대신 로컬 Docker Compose 실행을 위한 기본값입니다.
-#
+# my-ultra-jennie 환경 변수 (WSL2 + Docker Compose)
+# Cloud Run 없이 로컬/WSL2에서 실행하기 위한 기본값입니다.
 
 # 1. 공통 런타임 설정
-GCP_PROJECT_ID: "local"
-GCP_REGION: "local"
-GCP_LOCATION: "local"
 TRADING_MODE: "REAL"
 DRY_RUN: "false"
-CLOUD_RUN_URL: "https://dashboard.yj-ai-lab.com"
 
 # 2. KIS API Secret IDs (secrets.json 키 기준)
 MOCK_SECRET_ID_APP_KEY: "kis-v-app-key"
@@ -19,23 +14,16 @@ REAL_SECRET_ID_APP_KEY: "kis-r-app-key"
 REAL_SECRET_ID_APP_SECRET: "kis-r-app-secret"
 REAL_SECRET_ID_ACCOUNT_PREFIX: "kis-r-account-no"
 
-# 3. Database 설정
-# DB_TYPE: "ORACLE" 또는 "MARIADB" (기본값: ORACLE)
+# 3. Database 설정 (MariaDB 전용)
 DB_TYPE: "MARIADB"
-
-# 3-1. MariaDB 설정 (DB_TYPE=MARIADB 일 때 사용)
 # WSL2 mirrored mode + network_mode: host → 127.0.0.1로 Windows MariaDB 접근
 MARIADB_HOST: "127.0.0.1"
 MARIADB_PORT: "3306"
 MARIADB_USER: "root"                    # secrets.json의 mariadb-user 값으로 대체 가능
 MARIADB_PASSWORD: "q1w2e3R$" # secrets.json의 mariadb-password 값으로 대체 가능  
 MARIADB_DBNAME: "jennie_db"
-
-# 3-2. Oracle DB Secret IDs (DB_TYPE=ORACLE 일 때 사용)
-SECRET_ID_ORACLE_DB_USER: "oracle-db-id"
-SECRET_ID_ORACLE_DB_PASSWORD: "oracle-db-password"
-OCI_DB_SERVICE_NAME: "mylittlejenniedb_medium"
-OCI_WALLET_DIR_NAME: "/app/wallet"
+SQLALCHEMY_POOL_SIZE: "5"
+SQLALCHEMY_MAX_OVERFLOW: "20"
 
 # 4. KIS API Base URLs
 KIS_BASE_URL_MOCK: "https://openapivts.koreainvestment.com:29443"
@@ -109,7 +97,10 @@ SCHEDULER_QUEUE_SCOUT_JOB: "real.jobs.scout"
 ENABLE_SCOUT_JOB_WORKER: "true"
 SCHEDULER_SCOUT_JOB_ID: "scout-daily"  # jobs 테이블의 job_id와 일치해야 함
 
-# 14. Scout Job LLM 최적화 설정
+# 14. 매수 기준 점수 (B등급 이상)
+MIN_LLM_SCORE: "70"
+
+# 15. Scout Job LLM 최적화 설정
 SCOUT_MIN_LLM_INTERVAL_MINUTES: "60"        # LLM 호출 최소 간격 (1시간)
 SCOUT_LLM_CACHE_TTL_MINUTES: "240"          # LLM 캐시 유효기간 (4시간) - 시장 변화 반영
 SCOUT_LLM_MAX_WORKERS: "4"                  # LLM 동시 호출 최대 수 (Claude Rate Limit 고려)

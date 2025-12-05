@@ -18,60 +18,29 @@ _engine_config: dict = {}
 
 def _build_connection_url() -> str:
     """
-    DB_TYPE 환경 변수에 따라 Oracle 또는 MariaDB 연결 URL을 생성합니다.
+    MariaDB 연결 URL을 생성합니다.
     """
-    db_type = os.getenv("DB_TYPE", "ORACLE").upper()
-    logger.info(f"DB 연결 타입: {db_type}")
+    logger.info("DB 연결 타입: MARIADB")
 
-    if db_type == "MARIADB":
-        # MariaDB (MySQL 호환) 연결 설정
-        user = os.getenv("MARIADB_USER", "root")
-        password = os.getenv("MARIADB_PASSWORD", "password")
-        host = os.getenv("MARIADB_HOST", "localhost")
-        port = os.getenv("MARIADB_PORT", "3306")
-        dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
+    # MariaDB (MySQL 호환) 연결 설정
+    user = os.getenv("MARIADB_USER", "root")
+    password = os.getenv("MARIADB_PASSWORD", "password")
+    host = os.getenv("MARIADB_HOST", "localhost")
+    port = os.getenv("MARIADB_PORT", "3306")
+    dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
 
-        if not all([user, password, host, port, dbname]):
-            raise ValueError("MariaDB 접속 정보를 확인할 수 없습니다. (MARIADB_* 환경 변수 필요)")
+    if not all([user, password, host, port, dbname]):
+        raise ValueError("MariaDB 접속 정보를 확인할 수 없습니다. (MARIADB_* 환경 변수 필요)")
 
-        user_enc = quote_plus(user)
-        password_enc = quote_plus(password)
-        
-        # PyMySQL 드라이버 사용
-        return f"mysql+pymysql://{user_enc}:{password_enc}@{host}:{port}/{dbname}?charset=utf8mb4"
-
-    elif db_type == "ORACLE":
-        # 기존 Oracle 연결 설정
-        user = os.getenv("DB_USER") or os.getenv("ORACLE_USER")
-        password = os.getenv("DB_PASSWORD") or os.getenv("ORACLE_PASSWORD")
-        dsn = os.getenv("OCI_DB_SERVICE_NAME")
-        wallet_path = os.getenv("OCI_WALLET_DIR_NAME")
-
-        if not all([user, password, dsn]):
-            raise ValueError("Oracle 접속 정보를 확인할 수 없습니다. (DB_USER/DB_PASSWORD/OCI_DB_SERVICE_NAME 필요)")
-
-        user_enc = quote_plus(user)
-        password_enc = quote_plus(password)
-        dsn_part = quote_plus(dsn)
-
-        query_params = []
-        if wallet_path:
-            wallet_enc = quote_plus(wallet_path)
-            query_params.append(f"config_dir={wallet_enc}")
-            query_params.append(f"wallet_location={wallet_enc}")
-            query_params.append(f"wallet_password={password_enc}")
-        elif ":" in dsn or "/" in dsn:
-            query_params.append(f"service_name={dsn_part}")
-
-        query_str = f"?{'&'.join(query_params)}" if query_params else ""
-        return f"oracle+oracledb://{user_enc}:{password_enc}@{dsn_part}{query_str}"
-
-    else:
-        raise ValueError(f"지원하지 않는 DB_TYPE: {db_type}. 'ORACLE' 또는 'MARIADB'를 사용하세요.")
+    user_enc = quote_plus(user)
+    password_enc = quote_plus(password)
+    
+    # PyMySQL 드라이버 사용
+    return f"mysql+pymysql://{user_enc}:{password_enc}@{host}:{port}/{dbname}?charset=utf8mb4"
 
 
 def _get_db_type():
-    return os.getenv("DB_TYPE", "ORACLE").upper()
+    return "MARIADB"
 
 
 def init_engine(
@@ -80,10 +49,15 @@ def init_engine(
     db_service_name: Optional[str],
     wallet_path: Optional[str],
     *,
-    min_sessions: int = 1,
-    max_sessions: int = 5,
+    min_sessions: int = None,
+    max_sessions: int = None,
     echo: bool = False,
 ) -> Engine:
+    # 환경변수에서 연결 풀 크기 설정 (기본: min=2, max=10)
+    if min_sessions is None:
+        min_sessions = int(os.getenv("SQLALCHEMY_POOL_SIZE", "2"))
+    if max_sessions is None:
+        max_sessions = int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "10")) + min_sessions
     """
     SQLAlchemy Engine + Session Factory를 초기화합니다.
     기존 oracledb Connection Pool과 병행 운영되며,
@@ -139,15 +113,21 @@ def ensure_engine_initialized(
     db_service_name: Optional[str] = None,
     wallet_path: Optional[str] = None,
     *,
-    min_sessions: int = 1,
-    max_sessions: int = 5,
+    min_sessions: int = None,
+    max_sessions: int = None,
 ) -> Optional[Engine]:
     """
     외부에서 보조적으로 엔진 초기화를 트리거할 때 사용합니다.
-    이미 초기화된 경우 None을 반환합니다.
+    이미 초기화된 경우 기존 엔진을 반환합니다.
     """
     if _engine:
         return _engine
+    
+    # 환경변수에서 연결 풀 크기 설정
+    if min_sessions is None:
+        min_sessions = int(os.getenv("SQLALCHEMY_POOL_SIZE", "5"))
+    if max_sessions is None:
+        max_sessions = min_sessions + int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "20"))
 
     try:
         return init_engine(

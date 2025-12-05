@@ -18,7 +18,6 @@ langchain-core==0.3.80
 chromadb
 
 # Database (Oracle + MariaDB 하이브리드)
-oracledb
 pymysql>=1.0.0
 SQLAlchemy==2.0.31
 pandas

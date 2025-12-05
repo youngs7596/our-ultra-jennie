@@ -1,8 +1,12 @@
-# Version: v3.7
+# Version: v4.0
 # 작업 LLM: Claude Sonnet 4.5, Claude Opus 4.5
 """
-[v3.7] SQLAlchemy ORM 모델 정의
+[v4.0] SQLAlchemy ORM 모델 정의
 - CONFIG_VALUE 컬럼 TEXT로 변경 (Claude Opus 4.5)
+- 경쟁사 수혜 분석 시스템 테이블 추가 (Claude Opus 4.5)
+  - INDUSTRY_COMPETITORS: 산업/경쟁사 매핑
+  - EVENT_IMPACT_RULES: 이벤트 영향 규칙
+  - SECTOR_RELATION_STATS: 섹터 관계 통계
 """
 
 import os
@@ -244,3 +248,144 @@ class FinancialData(Base):
     sales_growth = Column("SALES_GROWTH", Float, nullable=True)
     eps_growth = Column("EPS_GROWTH", Float, nullable=True)
     created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+# ============================================================================
+# [v4.0] 경쟁사 수혜 분석 시스템 모델 (Claude Opus 4.5)
+# ============================================================================
+
+class IndustryCompetitors(Base):
+    """
+    산업/경쟁사 매핑 테이블
+    - 동일 섹터 내 경쟁 관계를 정의
+    - 시장 점유율 및 상장 여부 관리
+    """
+    __tablename__ = resolve_table_name("INDUSTRY_COMPETITORS")
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    sector_code = Column("SECTOR_CODE", String(20), nullable=False, index=True)
+    sector_name = Column("SECTOR_NAME", String(100), nullable=False)
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    stock_name = Column("STOCK_NAME", String(120), nullable=False)
+    market_share = Column("MARKET_SHARE", Float, nullable=True)  # 시장 점유율 (%)
+    rank_in_sector = Column("RANK_IN_SECTOR", Integer, nullable=True)  # 섹터 내 순위
+    is_leader = Column("IS_LEADER", Integer, default=0)  # 1=리더, 0=팔로워
+    exchange = Column("EXCHANGE", String(20), default='KRX')  # KRX, NYSE, NASDAQ 등
+    is_active = Column("IS_ACTIVE", Integer, default=1)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class EventImpactRules(Base):
+    """
+    이벤트 영향 규칙 테이블
+    - 이벤트 유형별 당사자/경쟁사 영향도 정의
+    - 효과 지속 기간 설정
+    """
+    __tablename__ = resolve_table_name("EVENT_IMPACT_RULES")
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    event_type = Column("EVENT_TYPE", String(50), nullable=False, unique=True)  # 보안사고, 리콜, 오너리스크 등
+    event_keywords = Column("EVENT_KEYWORDS", Text, nullable=True)  # JSON: ["해킹", "유출", "개인정보"]
+    
+    # 영향도 점수 (-100 ~ +100)
+    impact_on_self = Column("IMPACT_ON_SELF", Integer, default=-10)  # 당사자 영향
+    impact_on_competitor = Column("IMPACT_ON_COMPETITOR", Integer, default=5)  # 경쟁사 수혜
+    impact_on_supplier = Column("IMPACT_ON_SUPPLIER", Integer, default=-3)  # 협력사 영향
+    
+    # 효과 지속 기간 (일)
+    effect_duration_days = Column("EFFECT_DURATION_DAYS", Integer, default=20)
+    peak_effect_day = Column("PEAK_EFFECT_DAY", Integer, default=3)  # 영향 최대인 날
+    
+    # 신뢰도 및 메타데이터
+    confidence_level = Column("CONFIDENCE_LEVEL", String(10), default='MID')  # HIGH, MID, LOW
+    sample_count = Column("SAMPLE_COUNT", Integer, default=0)  # 과거 사례 수
+    description = Column("DESCRIPTION", Text, nullable=True)
+    
+    is_active = Column("IS_ACTIVE", Integer, default=1)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class SectorRelationStats(Base):
+    """
+    섹터 관계 통계 테이블 (디커플링 분석)
+    - 1등 기업 급락 시 2등 기업 반응 통계
+    - 과거 데이터 기반 적중률 관리
+    """
+    __tablename__ = resolve_table_name("SECTOR_RELATION_STATS")
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    sector_code = Column("SECTOR_CODE", String(20), nullable=False, index=True)
+    sector_name = Column("SECTOR_NAME", String(100), nullable=False)
+    
+    # 리더/팔로워 종목
+    leader_stock_code = Column("LEADER_STOCK_CODE", String(20), nullable=False)
+    leader_stock_name = Column("LEADER_STOCK_NAME", String(120), nullable=True)
+    follower_stock_code = Column("FOLLOWER_STOCK_CODE", String(20), nullable=False)
+    follower_stock_name = Column("FOLLOWER_STOCK_NAME", String(120), nullable=True)
+    
+    # 디커플링 통계
+    decoupling_rate = Column("DECOUPLING_RATE", Float, nullable=True)  # 0.62 = 62%
+    avg_benefit_return = Column("AVG_BENEFIT_RETURN", Float, nullable=True)  # 0.023 = 2.3%
+    avg_leader_drop = Column("AVG_LEADER_DROP", Float, nullable=True)  # -0.05 = -5%
+    
+    # 표본 및 신뢰도
+    sample_count = Column("SAMPLE_COUNT", Integer, default=0)
+    lookback_days = Column("LOOKBACK_DAYS", Integer, default=730)  # 분석 기간
+    confidence = Column("CONFIDENCE", String(10), default='MID')  # HIGH, MID, LOW
+    
+    # 권장 전략
+    recommended_holding_days = Column("RECOMMENDED_HOLDING_DAYS", Integer, default=20)
+    stop_loss_pct = Column("STOP_LOSS_PCT", Float, default=-0.03)  # -3%
+    take_profit_pct = Column("TAKE_PROFIT_PCT", Float, default=0.08)  # +8%
+    
+    last_calculated = Column("LAST_CALCULATED", DateTime, server_default=func.now())
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class CompetitorBenefitEvents(Base):
+    """
+    경쟁사 수혜 이벤트 테이블
+    - 악재 발생 기업과 수혜 기업 매핑
+    - 실시간 뉴스 모니터링 결과 저장
+    """
+    __tablename__ = resolve_table_name("COMPETITOR_BENEFIT_EVENTS")
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    
+    # 악재 발생 기업
+    affected_stock_code = Column("AFFECTED_STOCK_CODE", String(20), nullable=False, index=True)
+    affected_stock_name = Column("AFFECTED_STOCK_NAME", String(120), nullable=True)
+    
+    # 이벤트 정보
+    event_type = Column("EVENT_TYPE", String(50), nullable=False)  # 보안사고, 리콜 등
+    event_title = Column("EVENT_TITLE", String(1000), nullable=True)
+    event_severity = Column("EVENT_SEVERITY", Integer, default=0)  # 악재 심각도 (음수)
+    source_url = Column("SOURCE_URL", String(2000), nullable=True)
+    
+    # 수혜 기업
+    beneficiary_stock_code = Column("BENEFICIARY_STOCK_CODE", String(20), nullable=False, index=True)
+    beneficiary_stock_name = Column("BENEFICIARY_STOCK_NAME", String(120), nullable=True)
+    benefit_score = Column("BENEFIT_SCORE", Integer, default=0)  # 수혜 점수 (양수)
+    
+    # 섹터 정보
+    sector_code = Column("SECTOR_CODE", String(20), nullable=True)
+    sector_name = Column("SECTOR_NAME", String(100), nullable=True)
+    
+    # 상태 관리
+    status = Column("STATUS", String(20), default='ACTIVE')  # ACTIVE, EXPIRED, REALIZED
+    expires_at = Column("EXPIRES_AT", DateTime, nullable=True)  # 효과 만료 시점
+    
+    # 결과 추적 (백테스트용)
+    actual_return = Column("ACTUAL_RETURN", Float, nullable=True)  # 실제 수익률
+    is_success = Column("IS_SUCCESS", Integer, nullable=True)  # 1=성공, 0=실패
+    
+    detected_at = Column("DETECTED_AT", DateTime, server_default=func.now())
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())

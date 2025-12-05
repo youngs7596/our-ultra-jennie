@@ -4,7 +4,6 @@
 # [모듈] Oracle DB 및 MariaDB/Redis 연동, 데이터 적재/조회 유틸리티를 제공합니다.
 
 import logging
-import oracledb
 import pandas as pd
 import json
 import os
@@ -20,17 +19,12 @@ logger = logging.getLogger(__name__)
 # DB 타입 헬퍼 함수
 # ============================================================================
 def _is_mariadb() -> bool:
-    """현재 DB 타입이 MariaDB인지 확인"""
-    return os.getenv("DB_TYPE", "ORACLE").upper() == "MARIADB"
+    """현재 DB 타입 확인 (항상 MariaDB)"""
+    return True
 
 def _get_param_placeholder(index: int = 1) -> str:
-    """DB 타입에 따른 파라미터 플레이스홀더 반환
-    Oracle: :1, :2, ...
-    MariaDB: %s
-    """
-    if _is_mariadb():
-        return "%s"
-    return f":{index}"
+    """DB 타입에 따른 파라미터 플레이스홀더 반환 (MariaDB: %s)"""
+    return "%s"
 
 # ============================================================================
 # REDIS 연결 관리
@@ -189,6 +183,152 @@ def get_sentiment_score(stock_code: str) -> dict:
         logger.error(f"❌ [Redis] 감성 점수 조회 실패: {e}")
         return default_result
 
+
+# ============================================================================
+# [v4.0] 경쟁사 수혜 점수 Redis 저장/조회
+# ============================================================================
+
+def set_redis_data(key: str, data: dict, ttl: int = 86400):
+    """
+    [Redis] 일반 데이터를 JSON 형태로 저장합니다.
+    
+    Args:
+        key: Redis 키
+        data: 저장할 딕셔너리 데이터
+        ttl: 유효 시간 (초, 기본 24시간)
+    """
+    r = get_redis_connection()
+    if not r:
+        return False
+    
+    try:
+        r.setex(key, ttl, json.dumps(data, default=str))
+        logger.debug(f"✅ [Redis] 데이터 저장: {key}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Redis] 데이터 저장 실패 ({key}): {e}")
+        return False
+
+
+def get_redis_data(key: str) -> dict:
+    """
+    [Redis] 일반 데이터를 조회합니다.
+    
+    Args:
+        key: Redis 키
+    
+    Returns:
+        저장된 딕셔너리 데이터 또는 빈 딕셔너리
+    """
+    r = get_redis_connection()
+    if not r:
+        return {}
+    
+    try:
+        data_json = r.get(key)
+        if data_json:
+            return json.loads(data_json)
+        return {}
+    except Exception as e:
+        logger.error(f"❌ [Redis] 데이터 조회 실패 ({key}): {e}")
+        return {}
+
+
+def set_competitor_benefit_score(stock_code: str, score: int, reason: str, 
+                                  affected_stock: str, event_type: str, ttl: int = 1728000):
+    """
+    [Redis] 경쟁사 수혜 점수를 저장합니다. (기본 TTL: 20일)
+    
+    Args:
+        stock_code: 수혜 받는 종목 코드
+        score: 수혜 점수
+        reason: 수혜 사유
+        affected_stock: 악재 발생 종목
+        event_type: 이벤트 유형 (보안사고, 리콜 등)
+        ttl: 유효 시간 (초)
+    """
+    r = get_redis_connection()
+    if not r:
+        return False
+    
+    key = f"competitor_benefit:{stock_code}"
+    data = {
+        "score": score,
+        "reason": reason,
+        "affected_stock": affected_stock,
+        "event_type": event_type,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    try:
+        # 기존 점수가 있으면 더 높은 점수 유지
+        existing = r.get(key)
+        if existing:
+            existing_data = json.loads(existing)
+            if existing_data.get("score", 0) > score:
+                logger.debug(f"ℹ️ [Redis] 경쟁사 수혜: {stock_code} 기존 점수가 더 높음 (Skip)")
+                return True
+        
+        r.setex(key, ttl, json.dumps(data))
+        logger.info(f"✅ [Redis] 경쟁사 수혜 저장: {stock_code} +{score}점 ({reason})")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Redis] 경쟁사 수혜 저장 실패: {e}")
+        return False
+
+
+def get_competitor_benefit_score(stock_code: str) -> dict:
+    """
+    [Redis] 경쟁사 수혜 점수를 조회합니다.
+    
+    Args:
+        stock_code: 종목 코드
+    
+    Returns:
+        {'score': 0, 'reason': '', 'affected_stock': '', 'event_type': ''} (기본값)
+    """
+    r = get_redis_connection()
+    default_result = {"score": 0, "reason": "", "affected_stock": "", "event_type": ""}
+    
+    if not r:
+        return default_result
+    
+    key = f"competitor_benefit:{stock_code}"
+    try:
+        data_json = r.get(key)
+        if data_json:
+            return json.loads(data_json)
+        return default_result
+    except Exception as e:
+        logger.error(f"❌ [Redis] 경쟁사 수혜 조회 실패: {e}")
+        return default_result
+
+
+def get_all_competitor_benefits() -> dict:
+    """
+    [Redis] 모든 경쟁사 수혜 점수를 조회합니다.
+    
+    Returns:
+        {stock_code: {score, reason, ...}, ...}
+    """
+    r = get_redis_connection()
+    if not r:
+        return {}
+    
+    try:
+        keys = r.keys("competitor_benefit:*")
+        results = {}
+        for key in keys:
+            stock_code = key.replace("competitor_benefit:", "")
+            data_json = r.get(key)
+            if data_json:
+                results[stock_code] = json.loads(data_json)
+        return results
+    except Exception as e:
+        logger.error(f"❌ [Redis] 경쟁사 수혜 전체 조회 실패: {e}")
+        return {}
+
+
 # ============================================================================
 # Oracle DB: 뉴스 감성 저장
 # ============================================================================
@@ -205,55 +345,30 @@ def save_news_sentiment(connection, stock_code, title, score, reason, url, publi
         table_name = _get_table_name("NEWS_SENTIMENT")
         
         # 테이블 존재 여부 확인 (없으면 자동 생성)
-        if _is_mariadb():
-            # MariaDB: LIMIT 1 사용
-            try:
-                cursor.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
-            except Exception:
-                logger.warning(f"⚠️ 테이블 {table_name}이 없어 생성을 시도합니다.")
-                create_sql = f"""
-                CREATE TABLE {table_name} (
-                    ID INT AUTO_INCREMENT PRIMARY KEY,
-                    STOCK_CODE VARCHAR(20) NOT NULL,
-                    NEWS_TITLE VARCHAR(1000),
-                    SENTIMENT_SCORE INT DEFAULT 50,
-                    SENTIMENT_REASON VARCHAR(2000),
-                    SOURCE_URL VARCHAR(2000),
-                    PUBLISHED_AT DATETIME,
-                    CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE KEY UK_NEWS_URL (SOURCE_URL(500))
-                )
-                """
-                cursor.execute(create_sql)
-                connection.commit()
-                logger.info(f"✅ 테이블 {table_name} 생성 완료")
-        else:
-            # Oracle: ROWNUM 사용
-            try:
-                cursor.execute(f"SELECT 1 FROM {table_name} WHERE ROWNUM=1")
-            except oracledb.DatabaseError:
-                logger.warning(f"⚠️ 테이블 {table_name}이 없어 생성을 시도합니다.")
-                create_sql = f"""
-                CREATE TABLE {table_name} (
-                    ID NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                    STOCK_CODE VARCHAR2(20) NOT NULL,
-                    NEWS_TITLE VARCHAR2(1000),
-                    SENTIMENT_SCORE NUMBER DEFAULT 50,
-                    SENTIMENT_REASON VARCHAR2(2000),
-                    SOURCE_URL VARCHAR2(2000),
-                    PUBLISHED_AT TIMESTAMP,
-                    CREATED_AT TIMESTAMP DEFAULT SYSTIMESTAMP,
-                    CONSTRAINT UK_NEWS_URL_{table_name} UNIQUE (SOURCE_URL)
-                )
-                """
-                cursor.execute(create_sql)
-                logger.info(f"✅ 테이블 {table_name} 생성 완료")
+        # MariaDB: LIMIT 1 사용
+        try:
+            cursor.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
+        except Exception:
+            logger.warning(f"⚠️ 테이블 {table_name}이 없어 생성을 시도합니다.")
+            create_sql = f"""
+            CREATE TABLE {table_name} (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                STOCK_CODE VARCHAR(20) NOT NULL,
+                NEWS_TITLE VARCHAR(1000),
+                SENTIMENT_SCORE INT DEFAULT 50,
+                SENTIMENT_REASON VARCHAR(2000),
+                SOURCE_URL VARCHAR(2000),
+                PUBLISHED_AT DATETIME,
+                CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY UK_NEWS_URL (SOURCE_URL(500))
+            )
+            """
+            cursor.execute(create_sql)
+            connection.commit()
+            logger.info(f"✅ 테이블 {table_name} 생성 완료")
 
         # 중복 URL 체크 (이미 저장된 뉴스면 Skip)
-        if _is_mariadb():
-            check_sql = f"SELECT 1 FROM {table_name} WHERE SOURCE_URL = %s"
-        else:
-            check_sql = f"SELECT 1 FROM {table_name} WHERE SOURCE_URL = :1"
+        check_sql = f"SELECT 1 FROM {table_name} WHERE SOURCE_URL = %s"
         cursor.execute(check_sql, [url])
         if cursor.fetchone():
             logger.debug(f"ℹ️ [DB] 이미 존재하는 뉴스입니다. (Skip): {title[:20]}...")
@@ -265,20 +380,12 @@ def save_news_sentiment(connection, stock_code, title, score, reason, url, publi
         else:
             published_at_str = str(published_at)[:19]
 
-        if _is_mariadb():
-            insert_sql = f"""
-            INSERT INTO {table_name} 
-            (STOCK_CODE, NEWS_TITLE, SENTIMENT_SCORE, SENTIMENT_REASON, SOURCE_URL, PUBLISHED_AT)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(insert_sql, [stock_code, title, score, reason, url, published_at_str])
-        else:
-            insert_sql = f"""
-            INSERT INTO {table_name} 
-            (STOCK_CODE, NEWS_TITLE, SENTIMENT_SCORE, SENTIMENT_REASON, SOURCE_URL, PUBLISHED_AT)
-            VALUES (:1, :2, :3, :4, :5, TO_TIMESTAMP(:6, 'YYYY-MM-DD HH24:MI:SS'))
-            """
-            cursor.execute(insert_sql, [stock_code, title, score, reason, url, published_at_str])
+        insert_sql = f"""
+        INSERT INTO {table_name} 
+        (STOCK_CODE, NEWS_TITLE, SENTIMENT_SCORE, SENTIMENT_REASON, SOURCE_URL, PUBLISHED_AT)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_sql, [stock_code, title, score, reason, url, published_at_str])
         
         connection.commit()
         logger.info(f"✅ [DB] 뉴스 감성 저장 완료: {stock_code} ({score}점)")
@@ -319,19 +426,20 @@ def _is_sqlalchemy_ready() -> bool:
     except Exception:
         return False
 
-pool = None # 전역 연결 풀 변수
+pool = None # 전역 연결 풀 변수 (MariaDB에서는 사용하지 않음)
 
-# --- (init_connection_pool, get_connection, release_connection, close_pool - 기존과 동일) ---
-def init_connection_pool(db_user, db_password, db_service_name, wallet_path, min_sessions=2, max_sessions=5, increment=1):
+# --- (init_connection_pool - MariaDB에서는 SQLAlchemy 엔진만 초기화) ---
+def init_connection_pool(db_user=None, db_password=None, db_service_name=None, wallet_path=None, min_sessions=2, max_sessions=5, increment=1):
+    """MariaDB에서는 SQLAlchemy 엔진만 초기화합니다."""
     global pool
     
     # 환경 변수가 존재하면 기본값을 덮어씁니다.
     min_pool_size = int(os.getenv("DB_POOL_MIN", min_sessions))
     max_pool_size = int(os.getenv("DB_POOL_MAX", max_sessions))
 
-    logger.info(f"--- [DB Pool] OCI DB 연결 풀 생성 시도 (min: {min_pool_size}, max: {max_pool_size}) ---")
+    logger.info(f"--- [DB Pool] MariaDB SQLAlchemy 엔진 초기화 (pool_size: {min_pool_size}~{max_pool_size}) ---")
 
-    # SQLAlchemy 엔진도 동일한 접속 정보로 초기화 (점진적 마이그레이션용)
+    # SQLAlchemy 엔진 초기화
     sa_connection.ensure_engine_initialized(
         db_user=db_user,
         db_password=db_password,
@@ -340,141 +448,69 @@ def init_connection_pool(db_user, db_password, db_service_name, wallet_path, min
         min_sessions=min_pool_size,
         max_sessions=max_pool_size,
     )
-    try:
-        # 성능 개선: 연결 타임아웃은 pool.acquire(timeout=...)에서 설정
-        # oracledb.create_pool()은 connect_timeout 파라미터를 지원하지 않음
-        # Cloud Run에서 VPC를 통해 연결하므로 pool.acquire()에서 더 긴 타임아웃 사용
-        pool = oracledb.create_pool(
-            user=db_user, password=db_password, dsn=db_service_name,
-            config_dir=wallet_path, wallet_location=wallet_path, wallet_password=db_password,
-            min=min_pool_size, max=max_pool_size, increment=increment
-        )
-        logger.info("✅ [DB Pool] OCI DB 연결 풀 객체 생성 성공!")
-        
-        # 연결 풀 생성 후 실제 연결 테스트 (최소 연결 수만큼, 재시도 로직 포함)
-        logger.info(f"--- [DB Pool] 실제 연결 테스트 시작 (min_sessions={min_pool_size}) ---")
-        test_connections = []
-        import time
-        
-        try:
-            for i in range(min_pool_size):
-                max_retries = 3
-                retry_delay = 2
-                conn = None
-                
-                for retry in range(1, max_retries + 1):
-                    try:
-                        logger.info(f"   [DB Pool] 연결 {i+1}/{min_pool_size} 획득 시도 ({retry}/{max_retries})...")
-                        # oracledb 라이브러리는 pool.acquire()에 timeout 파라미터를 지원하지 않음
-                        # 재시도 로직으로 네트워크 지연 대응
-                        conn = pool.acquire()
-                        
-                        if conn:
-                            # 간단한 쿼리로 연결 테스트
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT 1 FROM DUAL")
-                            cursor.fetchone()
-                            cursor.close()
-                            test_connections.append(conn)
-                            logger.info(f"   ✅ [DB Pool] 연결 {i+1}/{min_pool_size} 테스트 성공")
-                            break
-                        else:
-                            logger.warning(f"   ⚠️ [DB Pool] 연결 {i+1}/{min_pool_size} 획득 실패 (None 반환)")
-                            if retry < max_retries:
-                                time.sleep(retry_delay)
-                                retry_delay *= 2  # 지수 백오프
-                    except Exception as e:
-                        logger.warning(f"   ⚠️ [DB Pool] 연결 {i+1}/{min_pool_size} 획득 시도 {retry}/{max_retries} 실패: {e}")
-                        if retry < max_retries:
-                            time.sleep(retry_delay)
-                            retry_delay *= 2  # 지수 백오프
-                        else:
-                            # 모든 재시도 실패
-                            logger.error(f"   ❌ [DB Pool] 연결 {i+1}/{min_sessions} 획득 최종 실패 (재시도 {max_retries}회 모두 실패)")
-                            raise Exception(f"연결 {i+1}/{min_sessions} 획득 실패: {e}")
-                
-                if not conn:
-                    raise Exception(f"연결 {i+1}/{min_sessions} 획득 실패 (모든 재시도 실패)")
-            
-            # 테스트 연결 반환
-            for conn in test_connections:
-                pool.release(conn)
-            
-            logger.info("✅ [DB Pool] OCI DB 연결 풀 생성 및 연결 테스트 성공!")
-        except Exception as e:
-            logger.error(f"❌ [DB Pool] 연결 테스트 실패: {e}")
-            # 테스트 실패 시 생성된 연결 정리
-            for conn in test_connections:
-                try:
-                    pool.release(conn)
-                except:
-                    pass
-            pool = None
-            raise
-    except Exception as e:
-        logger.error(f"❌ [DB Pool] OCI DB 연결 풀 생성 실패! (에러: {e})")
-        pool = None
-        raise
+    
+    # MariaDB는 pymysql 단일 연결 또는 SQLAlchemy pool 사용
+    pool = True  # 초기화 완료 플래그
+    logger.info("✅ [DB Pool] MariaDB SQLAlchemy 엔진 초기화 완료!")
 
 def get_connection(max_retries=3, retry_delay=1, validate_connection=True):
     """
-    연결 풀에서 연결을 가져옵니다.
+    MariaDB 연결을 가져옵니다. (SQLAlchemy raw connection 또는 legacy pool)
     
     Args:
         max_retries: 최대 재시도 횟수 (기본값: 3)
         retry_delay: 재시도 간 대기 시간(초) (기본값: 1초)
         validate_connection: 연결 유효성 검사 여부 (기본값: True)
     """
+    import time
+    
+    # 1. SQLAlchemy 엔진 확인
+    engine = sa_connection.get_engine()
+    if engine is not None:
+        for attempt in range(1, max_retries + 1):
+            try:
+                conn = engine.raw_connection()
+                if validate_connection:
+                    conn.ping(reconnect=True)
+                return conn
+            except Exception as e:
+                logger.warning(f"⚠️ [DB] SQLAlchemy 연결 획득 시도 {attempt}/{max_retries} 실패: {e}")
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+        return None
+    
+    # 2. Legacy pool 사용
     global pool
     if not pool:
         logger.error("❌ [DB Pool] 연결 풀이 초기화되지 않았습니다.")
         return None
     
-    import time
-    last_error = None
+    import pymysql
+    
     for attempt in range(1, max_retries + 1):
         try:
-            # oracledb 라이브러리는 pool.acquire()에 timeout 파라미터를 지원하지 않음
-            # 재시도 로직으로 네트워크 지연 대응
-            conn = pool.acquire()
-            if conn:
-                # 연결 유효성 검사 (idle timeout으로 끊어진 연결 감지)
-                if validate_connection:
-                    try:
-                        # ping()으로 연결 상태 확인 (가볍고 빠름)
-                        conn.ping()
-                    except Exception as e:
-                        # 연결이 끊어진 경우, 연결을 풀에서 제거하고 재시도
-                        logger.warning(f"⚠️ [DB Pool] 연결 유효성 검사 실패 (ping 실패): {e}")
-                        try:
-                            pool.drop(conn)
-                        except:
-                            pass
-                        conn = None
-                        if attempt < max_retries:
-                            time.sleep(retry_delay)
-                            continue
-                        else:
-                            logger.error(f"❌ [DB Pool] 유효한 연결 획득 실패 (재시도 {max_retries}회 모두 실패)")
-                            return None
-                
-                return conn
+            host = os.getenv("MARIADB_HOST", "localhost")
+            port = int(os.getenv("MARIADB_PORT", "3306"))
+            user = os.getenv("MARIADB_USER", "root")
+            password = os.getenv("MARIADB_PASSWORD", "")
+            dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
+            
+            conn = pymysql.connect(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                database=dbname,
+                charset='utf8mb4',
+                cursorclass=pymysql.cursors.DictCursor
+            )
+            
+            if validate_connection:
+                conn.ping(reconnect=True)
+            
+            return conn
         except Exception as e:
-            last_error = e
-            error_str = str(e)
-            
-            # Broken pipe 오류는 연결 풀이 손상되었음을 의미
-            if "Broken pipe" in error_str or "Errno 32" in error_str:
-                logger.warning(f"⚠️ [DB Pool] 연결 획득 시도 {attempt}/{max_retries} 실패: {e}")
-                logger.warning(f"⚠️ [DB Pool] Broken pipe 감지 - 연결 풀이 손상되었을 수 있습니다.")
-                
-                # 마지막 시도에서도 실패하면 연결 풀 재초기화 필요를 알림
-                if attempt == max_retries:
-                    logger.error(f"❌ [DB Pool] 연결 가져오기 최종 실패 (재시도 {max_retries}회 모두 실패): {e}")
-                    logger.error(f"❌ [DB Pool] 연결 풀 재초기화가 필요할 수 있습니다. (App 재시작 또는 연결 풀 재초기화 필요)")
-            else:
-                logger.warning(f"⚠️ [DB Pool] 연결 획득 시도 {attempt}/{max_retries} 실패: {e}")
-            
+            logger.warning(f"⚠️ [DB Pool] 연결 획득 시도 {attempt}/{max_retries} 실패: {e}")
             if attempt < max_retries:
                 time.sleep(retry_delay)
             else:
@@ -483,41 +519,32 @@ def get_connection(max_retries=3, retry_delay=1, validate_connection=True):
     return None
 
 def release_connection(connection):
-    global pool
-    if pool and connection:
-        pool.release(connection)
+    """MariaDB 연결을 닫습니다."""
+    if connection:
+        try:
+            connection.close()
+        except Exception as e:
+            logger.warning(f"⚠️ [DB Pool] 연결 닫기 중 오류: {e}")
 
 def close_pool():
+    """연결 풀 종료 (MariaDB에서는 플래그만 리셋)"""
     global pool
-    if pool:
-        try:
-            pool.close()
-            logger.info("--- [DB Pool] OCI DB 연결 풀이 종료되었습니다. ---")
-        except Exception as e:
-            logger.warning(f"⚠️ [DB Pool] 연결 풀 종료 중 오류: {e}")
-        finally:
-            pool = None
+    pool = None
+    logger.info("--- [DB Pool] MariaDB 연결 풀 플래그가 리셋되었습니다. ---")
 
 def is_pool_initialized():
-    """연결 풀이 초기화되었는지 확인"""
+    """연결 풀이 초기화되었는지 확인 (SQLAlchemy 엔진 또는 legacy pool)"""
     global pool
-    return pool is not None
+    # SQLAlchemy 엔진이 초기화되었거나 legacy pool이 있으면 True
+    engine = sa_connection.get_engine()
+    return pool is not None or engine is not None
 
 def reset_pool():
-    """연결 풀을 강제로 재초기화 (Broken pipe 등 문제 해결용)"""
+    """연결 풀을 강제로 재초기화"""
     global pool
-    logger.warning("⚠️ [DB Pool] 연결 풀 강제 재초기화 시작...")
-    try:
-        if pool:
-            try:
-                pool.close()
-            except Exception as e:
-                logger.warning(f"⚠️ [DB Pool] 기존 연결 풀 종료 중 오류 (무시): {e}")
-    except Exception as e:
-        logger.warning(f"⚠️ [DB Pool] 연결 풀 종료 중 오류 (무시): {e}")
-    finally:
-        pool = None
-    logger.info("✅ [DB Pool] 연결 풀 재초기화 완료 (다음 연결 시도 시 새로 생성됨)")
+    logger.warning("⚠️ [DB Pool] MariaDB 연결 풀 재초기화...")
+    pool = None
+    logger.info("✅ [DB Pool] 연결 풀 재초기화 완료")
 
 # --- 컨텍스트 매니저 추가 ---
 from contextlib import contextmanager
@@ -575,57 +602,28 @@ def get_db_connection_context():
             release_connection(conn)
             logger.debug("🔧 [DB Pool] 연결 반납 완료 (Pool 재사용)")
 
-# --- (get_db_connection - Oracle/MariaDB 하이브리드 지원) ---
-def get_db_connection(db_user, db_password, db_service_name, wallet_path):
+# --- (get_db_connection - MariaDB 전용) ---
+def get_db_connection(db_user=None, db_password=None, db_service_name=None, wallet_path=None):
     """
-    DB_TYPE 환경 변수에 따라 Oracle 또는 MariaDB 연결을 반환합니다.
-    - DB_TYPE=MARIADB: pymysql 연결 반환
-    - DB_TYPE=ORACLE (기본값): oracledb 연결 반환
+    MariaDB 연결을 반환합니다. (SQLAlchemy raw connection 사용)
     """
-    db_type = os.getenv("DB_TYPE", "ORACLE").upper()
-    
-    if db_type == "MARIADB":
-        try:
-            import pymysql
-            host = os.getenv("MARIADB_HOST", "localhost")
-            port = int(os.getenv("MARIADB_PORT", "3306"))
-            user = os.getenv("MARIADB_USER", "root")
-            password = os.getenv("MARIADB_PASSWORD", "")
-            dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
-            
-            connection = pymysql.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database=dbname,
-                charset='utf8mb4',
-                cursorclass=pymysql.cursors.DictCursor
-            )
-            logger.info(f"✅ DB: MariaDB 연결 성공! ({host}:{port}/{dbname})")
-            sa_connection.ensure_engine_initialized()
-            return connection
-        except Exception as e:
-            logger.error(f"❌ DB: MariaDB 연결 실패! (에러: {e})")
-            return None
-    else:
-        # Oracle DB 연결 (기존 로직)
-        try:
-            connection = oracledb.connect(
-                user=db_user, password=db_password, dsn=db_service_name,
-                config_dir=wallet_path, wallet_location=wallet_path, wallet_password=db_password
-            )
-            logger.info("✅ DB: OCI DB 연결 성공!")
-            sa_connection.ensure_engine_initialized(
-                db_user=db_user,
-                db_password=db_password,
-                db_service_name=db_service_name,
-                wallet_path=wallet_path,
-            )
-            return connection
-        except Exception as e:
-            logger.error(f"❌ DB: OCI DB 연결 실패! (에러: {e})")
-            return None
+    try:
+        # SQLAlchemy 엔진 초기화 후 raw connection 반환
+        sa_connection.ensure_engine_initialized()
+        engine = sa_connection.get_engine()
+        if engine is None:
+            raise RuntimeError("SQLAlchemy 엔진이 초기화되지 않았습니다.")
+        
+        # raw DBAPI connection 반환
+        connection = engine.raw_connection()
+        host = os.getenv("MARIADB_HOST", "localhost")
+        port = os.getenv("MARIADB_PORT", "3306")
+        dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
+        logger.info(f"✅ DB: MariaDB 연결 성공! ({host}:{port}/{dbname})")
+        return connection
+    except Exception as e:
+        logger.error(f"❌ DB: MariaDB 연결 실패! (에러: {e})")
+        return None
 
 # --- (save_all_daily_prices, update_all_stock_fundamentals, save_to_watchlist - MariaDB/Oracle 호환) ---
 def save_all_daily_prices(connection, all_daily_prices_params):
@@ -1563,6 +1561,7 @@ def _execute_trade_and_log_legacy(
     connection, trade_type, stock_info, quantity, price, llm_decision,
     initial_stop_loss_price, strategy_signal, key_metrics_dict, market_context_dict
 ):
+    """MariaDB 전용 거래 실행 및 로깅"""
     cursor = None
     try:
         if price <= 0:
@@ -1602,24 +1601,26 @@ def _execute_trade_and_log_legacy(
         tradelog_table = _get_table_name("TradeLog")
         
         if trade_type.startswith('BUY'):
+            # MariaDB: LIMIT 1 사용
             sql_check = f"""
             SELECT id, quantity, average_buy_price, total_buy_amount, current_high_price, STOP_LOSS_PRICE, SELL_STATE
             FROM {portfolio_table}
-            WHERE stock_code = :1 AND status = 'HOLDING'
+            WHERE stock_code = %s AND status = 'HOLDING'
             ORDER BY id ASC
-            FETCH FIRST 1 ROWS ONLY
+            LIMIT 1
             """
             cursor.execute(sql_check, [stock_info['code']])
             existing = cursor.fetchone()
             
             if existing:
-                existing_id = existing[0]
-                existing_quantity = existing[1]
-                existing_avg_price = existing[2]
-                existing_total_amount = existing[3]
-                existing_high_price = existing[4]
-                existing_stop_loss = existing[5]
-                existing_sell_state = existing[6]
+                # DictCursor 사용 시 컬럼명으로 접근
+                existing_id = existing['id']
+                existing_quantity = existing['quantity']
+                existing_avg_price = existing['average_buy_price']
+                existing_total_amount = existing['total_buy_amount']
+                existing_high_price = existing['current_high_price']
+                existing_stop_loss = existing['STOP_LOSS_PRICE']
+                existing_sell_state = existing['SELL_STATE']
                 
                 new_quantity = existing_quantity + quantity
                 new_total_amount = existing_total_amount + (quantity * price)
@@ -1634,13 +1635,13 @@ def _execute_trade_and_log_legacy(
                 
                 sql_update = f"""
                 UPDATE {portfolio_table}
-                SET quantity = :1,
-                    average_buy_price = :2,
-                    total_buy_amount = :3,
-                    current_high_price = :4,
-                    STOP_LOSS_PRICE = :5,
-                    SELL_STATE = :6
-                WHERE id = :7
+                SET quantity = %s,
+                    average_buy_price = %s,
+                    total_buy_amount = %s,
+                    current_high_price = %s,
+                    STOP_LOSS_PRICE = %s,
+                    SELL_STATE = %s
+                WHERE id = %s
                 """
                 cursor.execute(sql_update, [
                     new_quantity,
@@ -1655,25 +1656,25 @@ def _execute_trade_and_log_legacy(
                 logger.info(f"   (DB) 기존 Portfolio 레코드 업데이트 (ID: {existing_id}, 수량: {existing_quantity}주 → {new_quantity}주, 평균가: {existing_avg_price:,.0f}원 → {new_avg_price:,.0f}원, SELL_STATE: {existing_sell_state} → {new_sell_state})")
                 logger.info(f"   (DB) [상세] 기존 total_buy_amount: {existing_total_amount:,.0f}원, 추가 매수 금액: {quantity * price:,.0f}원, 새 total_buy_amount: {new_total_amount:,.0f}원")
             else:
+                # MariaDB: lastrowid 사용
                 sql_portfolio = f"""
                 INSERT INTO {portfolio_table} (
                     stock_code, stock_name, quantity, average_buy_price, total_buy_amount, 
                     current_high_price, status, SELL_STATE, STOP_LOSS_PRICE
                 ) VALUES (
-                    :1, :2, :3, :4, :5, :6, 'HOLDING', 'INITIAL', :7
-                ) RETURNING id INTO :8
+                    %s, %s, %s, %s, %s, %s, 'HOLDING', 'INITIAL', %s
+                )
                 """
-                new_id_var = cursor.var(oracledb.NUMBER)
                 if initial_stop_loss_price is None:
                     initial_stop_loss_price = price * 0.93 # Fallback
                 cursor.execute(sql_portfolio, [
                     stock_info['code'], stock_info['name'], quantity, price, quantity * price, 
-                    price, initial_stop_loss_price, new_id_var
+                    price, initial_stop_loss_price
                 ])
-                new_portfolio_id = new_id_var.getvalue()[0]
+                new_portfolio_id = cursor.lastrowid
                 logger.info(f"   (DB) 새 Portfolio 레코드 생성 (ID: {new_portfolio_id}, average_buy_price: {price:,.0f}원, quantity: {quantity}주)")
         elif trade_type == 'SELL':
-            sql_portfolio = f"UPDATE {portfolio_table} SET status = 'SOLD', SELL_STATE = 'SOLD' WHERE id = :1"
+            sql_portfolio = f"UPDATE {portfolio_table} SET status = 'SOLD', SELL_STATE = 'SOLD' WHERE id = %s"
             cursor.execute(sql_portfolio, [stock_info['id']])
             new_portfolio_id = stock_info['id']
 
@@ -1683,8 +1684,8 @@ def _execute_trade_and_log_legacy(
             trade_timestamp, 
             STRATEGY_SIGNAL, KEY_METRICS_JSON, MARKET_CONTEXT_JSON
         ) VALUES (
-            :1, :2, :3, :4, :5, :6, SYSTIMESTAMP,
-            :7, :8, :9
+            %s, %s, %s, %s, %s, %s, NOW(),
+            %s, %s, %s
         )
         """
         cursor.execute(sql_log, [

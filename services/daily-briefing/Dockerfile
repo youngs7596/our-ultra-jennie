@@ -13,9 +13,6 @@ RUN apt-get update && apt-get install -y \
     libaio1t64 \
     && rm -rf /var/lib/apt/lists/*
 
-# Oracle Wallet 복사
-COPY wallet/ /app/wallet/
-
 # shared 패키지 복사
 COPY shared/ /app/shared/
 COPY prompts/ /app/prompts/

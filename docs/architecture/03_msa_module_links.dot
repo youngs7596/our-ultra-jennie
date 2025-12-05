@@ -1,0 +1,218 @@
+digraph MSAModuleLinks {
+    // 전체 스타일 설정
+    bgcolor="#1a1a2e";
+    fontname="Helvetica,Arial,sans-serif";
+    label="Ultra Jennie - MSA 모듈 연계도";
+    labelloc=t;
+    fontsize=18;
+    fontcolor="white";
+    rankdir=TB;
+    compound=true;
+    splines=polyline;
+    nodesep=0.5;
+    ranksep=0.8;
+
+    // 기본 노드 스타일
+    node [
+        style="rounded,filled",
+        shape=box,
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=9,
+        fontcolor="white",
+        width=1.2,
+        height=0.5
+    ];
+
+    // 기본 엣지 스타일
+    edge [
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=7,
+        fontcolor="white",
+        color="#666666",
+        penwidth=1.5
+    ];
+
+    // ============================================================
+    // 데이터 수집/분석 서비스
+    // ============================================================
+    subgraph cluster_crawl {
+        label="데이터 수집";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0f0ff";
+        color="#d0d0d0";
+        fontcolor="#1e5f74";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        NEWS_CRAWLER [label="News Crawler\n뉴스 수집", fillcolor="#1e5f74", color="#3498db"];
+        DAILY_BRIEF [label="Daily Briefing\n일일 요약", fillcolor="#1e5f74", color="#3498db"];
+    }
+
+    // ============================================================
+    // AI / 분석 서비스
+    // ============================================================
+    subgraph cluster_ai {
+        label="AI / 분석";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0f0ff";
+        color="#d0d0d0";
+        fontcolor="#0c2461";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        SCOUT [label="Scout Job\n종목 발굴", fillcolor="#1e3799", color="#4a69bd"];
+        HYBRID [label="Hybrid Scoring\n복합 점수", fillcolor="#1e3799", color="#4a69bd"];
+        COMP [label="Competitor Analyzer\n경쟁사 분석", fillcolor="#1e3799", color="#4a69bd"];
+        CLASSIFIER [label="NewsClassifier\n뉴스 분류", fillcolor="#1e3799", color="#4a69bd"];
+        PAIR [label="Pair Trading\n롱/숏 전략", fillcolor="#1e3799", color="#4a69bd"];
+        BACKTEST [label="Backtester\n백테스트", fillcolor="#1e3799", color="#4a69bd"];
+        LLM [label="JennieBrain\nLLM", fillcolor="#6a0dad", color="#9b59b6"];
+    }
+
+    // ============================================================
+    // 주문 실행 서비스
+    // ============================================================
+    subgraph cluster_exec {
+        label="주문 실행";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0fff0";
+        color="#d0d0d0";
+        fontcolor="#0a5d5d";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        BUY_SCAN [label="Buy Scanner\n매수 스캔", fillcolor="#079992", color="#38ada9"];
+        BUY_EXEC [label="Buy Executor\n매수 실행", fillcolor="#079992", color="#38ada9"];
+        SELL_EXEC [label="Sell Executor\n매도 실행", fillcolor="#079992", color="#38ada9"];
+        PRICE_MON [label="Price Monitor\n시세 감시", fillcolor="#079992", color="#38ada9"];
+    }
+
+    // ============================================================
+    // 데이터 저장소
+    // ============================================================
+    subgraph cluster_data {
+        label="데이터 저장소";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f5f5f5";
+        color="#d0d0d0";
+        fontcolor="#1a5a1a";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        MARIADB [label="MariaDB", fillcolor="#27ae60", color="#2ecc71", shape=cylinder];
+        REDIS [label="Redis", fillcolor="#e74c3c", color="#c0392b", shape=cylinder];
+        CHROMADB [label="ChromaDB", fillcolor="#9b59b6", color="#8e44ad", shape=cylinder];
+    }
+
+    // ============================================================
+    // 메시지 큐
+    // ============================================================
+    subgraph cluster_mq {
+        label="메시지 큐";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#fff8f0";
+        color="#d0d0d0";
+        fontcolor="#d68910";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        RABBITMQ [label="RabbitMQ", fillcolor="#f39c12", color="#d68910", shape=cylinder];
+    }
+
+    // ============================================================
+    // 외부 시스템
+    // ============================================================
+    subgraph cluster_ext {
+        label="외부 시스템";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f5f0ff";
+        color="#d0d0d0";
+        fontcolor="#4a1942";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        KIS_GW [label="KIS Gateway", fillcolor="#6F1E51", color="#b71540"];
+        KIS_API [label="KIS API\n한국투자증권", fillcolor="#4a1942", color="#6F1E51"];
+        
+        KIS_GW -> KIS_API [color="#b71540", label="실거래"];
+    }
+
+    // ============================================================
+    // 사용자 인터페이스
+    // ============================================================
+    subgraph cluster_ui {
+        label="사용자 인터페이스";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0f0ff";
+        color="#d0d0d0";
+        fontcolor="#2d3561";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        DASH [label="Dashboard V2", fillcolor="#3c6382", color="#60a3bc"];
+    }
+
+    // ============================================================
+    // 연결선
+    // ============================================================
+
+    // News Crawler 연결
+    NEWS_CRAWLER -> CHROMADB [color="#9b59b6"];
+    NEWS_CRAWLER -> REDIS [color="#e74c3c"];
+    NEWS_CRAWLER -> MARIADB [color="#27ae60"];
+    NEWS_CRAWLER -> CLASSIFIER [color="#1e3799", style=dashed];
+
+    // Scout Job 연결
+    SCOUT -> CHROMADB [color="#9b59b6"];
+    SCOUT -> REDIS [color="#e74c3c"];
+    SCOUT -> MARIADB [color="#27ae60"];
+    SCOUT -> RABBITMQ [color="#f39c12"];
+    SCOUT -> HYBRID [color="#1e3799", style=dashed];
+    SCOUT -> COMP [color="#1e3799", style=dashed];
+    SCOUT -> CLASSIFIER [color="#1e3799", style=dashed];
+    SCOUT -> LLM [color="#9b59b6", style=dashed];
+
+    // Competitor Analyzer 연결
+    COMP -> REDIS [color="#e74c3c"];
+
+    // Pair Trading / Backtester 연결
+    PAIR -> MARIADB [color="#27ae60"];
+    BACKTEST -> MARIADB [color="#27ae60"];
+
+    // Buy Scanner 연결
+    BUY_SCAN -> MARIADB [color="#27ae60"];
+    BUY_SCAN -> RABBITMQ [color="#f39c12"];
+
+    // Price Monitor 연결
+    PRICE_MON -> RABBITMQ [color="#f39c12"];
+
+    // Daily Briefing 연결
+    DAILY_BRIEF -> MARIADB [color="#27ae60"];
+
+    // RabbitMQ -> Executors
+    RABBITMQ -> BUY_EXEC [color="#f39c12"];
+    RABBITMQ -> SELL_EXEC [color="#f39c12"];
+
+    // Executors -> KIS Gateway
+    BUY_EXEC -> KIS_GW [color="#b71540"];
+    SELL_EXEC -> KIS_GW [color="#b71540"];
+
+    // Dashboard 연결
+    DASH -> MARIADB [color="#27ae60"];
+    DASH -> REDIS [color="#e74c3c"];
+}
+

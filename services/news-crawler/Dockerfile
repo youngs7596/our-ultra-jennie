@@ -10,9 +10,6 @@ RUN apt-get update && apt-get install -y \
     libaio1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Oracle Wallet 복사 (DB 연결에 필요)
-COPY wallet/ /app/wallet/
-
 # shared 패키지 복사
 COPY shared/ /app/shared/
 COPY prompts/ /app/prompts/

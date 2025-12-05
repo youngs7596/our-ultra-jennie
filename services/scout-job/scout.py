@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# Version: v4.0
+# Version: v5.1
 # 작업 LLM: Claude Sonnet 4.5, Claude Opus 4.5
 """
-[v4.0] Scout Job - 제니 피드백 반영 (깐깐한 필터링)
-- 기본점수 40→20, Phase 1 통과기준 55→60, Judge 승인기준 50→75
-- 쿼터제 도입: 최종 Watchlist 상위 15개만 저장
-- Debate 프롬프트 강화: Bull/Bear 캐릭터 극단적으로 설정
-- Redis 상태 저장: Dashboard에서 실시간 파이프라인 진행 상황 확인 가능
+[v5.1] Scout Job - 경쟁사 수혜 분석 연동
+- [v4.0] 깐깐한 필터링 (기본점수 20, Hunter 통과 60점, Judge 승인 75점)
+- [v4.0] 쿼터제 도입: 최종 Watchlist 상위 15개만 저장
+- [v4.0] Debate 프롬프트 강화: Bull/Bear 캐릭터 극단적으로 설정
+- [v4.0] Redis 상태 저장: Dashboard에서 실시간 파이프라인 진행 상황 확인 가능
+- [v5.1] 경쟁사 수혜 점수 반영: 경쟁사 악재 시 Hunter 점수에 가산
 """
 
 import logging
@@ -1399,6 +1400,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
 def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cache=None, news_cache=None):
     """
     [v5.0] Phase 1 Hunter - 정량 컨텍스트 포함 LLM 분석
+    [v5.1] 경쟁사 수혜 점수 반영 추가
     
     기존 Hunter와 달리, QuantScorer의 결과를 프롬프트에 포함하여
     LLM이 데이터 기반 판단을 하도록 유도합니다.
@@ -1411,6 +1413,11 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
     # 정량 컨텍스트 생성
     quant_context = format_quant_score_for_prompt(quant_result)
     
+    # [v5.1] 경쟁사 수혜 점수 조회
+    competitor_benefit = database.get_competitor_benefit_score(code)
+    competitor_bonus = competitor_benefit.get('score', 0)
+    competitor_reason = competitor_benefit.get('reason', '')
+    
     snapshot = snapshot_cache.get(code) if snapshot_cache else None
     if not snapshot:
         return {
@@ -1422,9 +1429,14 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
             'hunter_score': 0,
             'hunter_reason': '스냅샷 조회 실패',
             'passed': False,
+            'competitor_bonus': competitor_bonus,
         }
     
     news_from_chroma = news_cache.get(code, "최근 관련 뉴스 없음") if news_cache else "뉴스 캐시 없음"
+    
+    # [v5.1] 경쟁사 수혜 정보를 뉴스에 추가
+    if competitor_bonus > 0:
+        news_from_chroma += f"\n\n⚡ [경쟁사 수혜 기회] {competitor_reason} (+{competitor_bonus}점)"
     
     decision_info = {
         'code': code,
@@ -1439,6 +1451,11 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
     # [v5.0] 정량 컨텍스트 포함 Hunter 호출
     hunter_result = brain.get_jennies_analysis_score_v5(decision_info, quant_context)
     hunter_score = hunter_result.get('score', 0)
+    
+    # [v5.1] 경쟁사 수혜 가산점 적용 (최대 +10점)
+    if competitor_bonus > 0:
+        hunter_score = min(100, hunter_score + competitor_bonus)
+        logger.info(f"   🎯 [경쟁사 수혜] {info['name']}({code}) +{competitor_bonus}점 가산 ({competitor_reason})")
     
     # 통과 기준: 60점 이상
     passed = hunter_score >= 60
@@ -1458,6 +1475,8 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
         'hunter_score': hunter_score,
         'hunter_reason': hunter_result.get('reason', ''),
         'passed': passed,
+        'competitor_bonus': competitor_bonus,  # [v5.1] 경쟁사 수혜 점수
+        'competitor_reason': competitor_reason,
     }
 
 
@@ -1868,21 +1887,13 @@ def main():
     chroma_client = None
 
     try:
-        logger.info("--- [Init] 환경 변수 로드 및 OCI DB/KIS API 연결 시작 ---")
+        logger.info("--- [Init] 환경 변수 로드 및 MariaDB/KIS API 연결 시작 ---")
         load_dotenv()
         
-        logger.info("🔧 DB 연결 중... (Secret 캐싱 활성화)")
-        db_user = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_USER"))
-        db_password = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"))
-        
-        db_conn = database.get_db_connection(
-            db_user=db_user,
-            db_password=db_password,
-            db_service_name=os.getenv("OCI_DB_SERVICE_NAME"),
-            wallet_path=os.path.join(PROJECT_ROOT, os.getenv("OCI_WALLET_DIR_NAME", "wallet"))
-        )
+        logger.info("🔧 DB 연결 중... (SQLAlchemy 사용)")
+        db_conn = database.get_db_connection()
         if db_conn is None:
-            raise Exception("OCI DB 연결에 실패했습니다.")
+            raise Exception("MariaDB 연결에 실패했습니다.")
         
         logger.info("✅ DB 연결 완료")
         

@@ -127,16 +127,14 @@ services:
     env_file:
       - infrastructure/env-vars-mock.yaml
     environment:
-      - PORT=8095
+      - PORT=9095
+      - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     volumes:
       - ./scheduler_data:/app/data
-    ports:
-      - "9095:8095"
-    depends_on:
-      rabbitmq:
-        condition: service_started
-    networks:
-      - msa-network
+    network_mode: host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9095"]
 
   # ============================================================================
   # 1. KIS Mock Server (간단한 HTTP REST API 버전)
@@ -149,10 +147,7 @@ services:
     container_name: kis-mock
     environment:
       - PORT=9443
-    ports:
-      - "9443:9443"
-    networks:
-      - msa-network
+    network_mode: host
     healthcheck:
       test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:9443/health').raise_for_status()" ]
       interval: 5s
@@ -166,11 +161,8 @@ services:
   pubsub-emulator:
     image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
     container_name: pubsub-emulator
-    ports:
-      - "8085:8085"
     command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085
-    networks:
-      - msa-network
+    network_mode: host
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8085" ]
       interval: 10s
@@ -190,7 +182,6 @@ services:
       - infrastructure/env-vars-wsl.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
       - PORT=8080
       - SECRETS_FILE=/app/config/secrets.json
@@ -213,20 +204,18 @@ services:
       - infrastructure/env-vars-mock.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
-      - PORT=8080
+      - PORT=9080
       - SECRETS_FILE=/app/config/secrets.json
       - GUNICORN_CMD_ARGS=--timeout 600
-    ports:
-      - "9080:8080"
+      - KIS_BASE_URL_MOCK=http://localhost:9443
+    network_mode: host
     depends_on:
       kis-mock:
         condition: service_healthy
-    networks:
-      - msa-network
+    command: ["gunicorn", "--bind", "0.0.0.0:9080", "--workers", "1", "--threads", "1", "--timeout", "600", "--chdir", "/app/kis-gateway", "main:app"]
     healthcheck:
-      test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health').raise_for_status()" ]
+      test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:9080/health').raise_for_status()" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -244,7 +233,6 @@ services:
       - infrastructure/env-vars-wsl.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
       - PORT=8081
       - SECRETS_FILE=/app/config/secrets.json
@@ -268,19 +256,17 @@ services:
       - infrastructure/env-vars-mock.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
-      - PORT=8081
+      - PORT=9081
       - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "9081:8081"
+      - KIS_GATEWAY_URL=http://localhost:9080
+      - PUBSUB_EMULATOR_HOST=localhost:8085
+    network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
       pubsub-emulator:
         condition: service_started
-    networks:
-      - msa-network
 
   # ============================================================================
   # 5. Buy Executor
@@ -295,7 +281,6 @@ services:
       - infrastructure/env-vars-wsl.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
       - PORT=8082
       - SECRETS_FILE=/app/config/secrets.json
@@ -319,19 +304,17 @@ services:
       - infrastructure/env-vars-mock.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
-      - PORT=8082
+      - PORT=9082
       - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "9082:8082"
+      - KIS_GATEWAY_URL=http://localhost:9080
+      - PUBSUB_EMULATOR_HOST=localhost:8085
+    network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
       pubsub-emulator:
         condition: service_started
-    networks:
-      - msa-network
 
   # ============================================================================
   # 6. Sell Executor
@@ -346,7 +329,6 @@ services:
       - infrastructure/env-vars-wsl.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
       - PORT=8083
       - SECRETS_FILE=/app/config/secrets.json
@@ -370,19 +352,17 @@ services:
       - infrastructure/env-vars-mock.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
-      - PORT=8083
+      - PORT=9083
       - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "9083:8083"
+      - KIS_GATEWAY_URL=http://localhost:9080
+      - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+    network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-    networks:
-      - msa-network
   # ============================================================================
   # 7. Price Monitor
   # ============================================================================
@@ -396,7 +376,6 @@ services:
       - infrastructure/env-vars-wsl.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
       - PORT=8088
       - SECRETS_FILE=/app/config/secrets.json
@@ -422,14 +401,15 @@ services:
       - infrastructure/env-vars-mock.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
-      - PORT=8080
+      - PORT=9088
       - SECRETS_FILE=/app/config/secrets.json
       - GUNICORN_CMD_ARGS=--timeout 600
-      - KIS_TOKEN_PROVIDER_URL=http://kis-gateway-mock:8080/api/token
-    ports:
-      - "9088:8080"
+      - KIS_GATEWAY_URL=http://localhost:9080
+      - KIS_TOKEN_PROVIDER_URL=http://localhost:9080/api/token
+      - REDIS_URL=redis://localhost:6379
+      - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+    network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
@@ -437,8 +417,6 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-    networks:
-      - msa-network
 
   # ============================================================================
   # 8. Daily Briefing
@@ -477,15 +455,13 @@ services:
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
     environment:
-      - PORT=8080
+      - PORT=9086
       - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "9086:8080"
+      - KIS_GATEWAY_URL=http://localhost:9080
+    network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
-    networks:
-      - msa-network
 
   # ============================================================================
   # 9. Scout Job
@@ -500,7 +476,6 @@ services:
       - infrastructure/env-vars-wsl.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
       - PORT=8087
       - SECRETS_FILE=/app/config/secrets.json
@@ -524,17 +499,16 @@ services:
       - infrastructure/env-vars-mock.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
-      - PORT=8080
+      - PORT=9087
       - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "9087:8080"
+      - KIS_GATEWAY_URL=http://localhost:9080
+      - CHROMA_SERVER_HOST=localhost
+      - REDIS_URL=redis://localhost:6379
+    network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
-    networks:
-      - msa-network
 
   # ============================================================================
   # 10. News Crawler
@@ -549,7 +523,6 @@ services:
       - infrastructure/env-vars-wsl.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
       - PORT=8089
       - SECRETS_FILE=/app/config/secrets.json
@@ -573,101 +546,22 @@ services:
       - infrastructure/env-vars-mock.yaml
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
     environment:
-      - PORT=8080
+      - PORT=9089
       - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "9089:8080"
+      - KIS_GATEWAY_URL=http://localhost:9080
+      - CHROMA_SERVER_HOST=localhost
+      - REDIS_URL=redis://localhost:6379
+    network_mode: host
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
-    networks:
-      - msa-network
 
   # ============================================================================
   # 11. RAG Cacher - [v3.9] 제거됨 (Scout가 직접 ChromaDB 조회)
   # ============================================================================
   # rag-cacher 서비스는 더 이상 사용하지 않습니다.
   # Scout Job이 직접 ChromaDB에서 종목별 뉴스를 검색합니다.
-
-  # ============================================================================
-  # 12. Streamlit Dashboard
-  # ============================================================================
-  dashboard:
-    build:
-      context: .
-      dockerfile: services/dashboard/Dockerfile
-    container_name: dashboard
-    profiles: ["real"]
-    env_file:
-      - infrastructure/env-vars-wsl.yaml
-    volumes:
-      - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
-    environment:
-      - PORT=8080
-      - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "8501:8080"
-    depends_on:
-      kis-gateway:
-        condition: service_healthy
-      chromadb:
-        condition: service_started
-    networks:
-      - msa-network
-
-  dashboard-tunnel:
-    build:
-      context: .
-      dockerfile: services/cloudflared/Dockerfile
-    container_name: dashboard-tunnel
-    restart: unless-stopped
-    profiles: ["real"]
-    network_mode: host
-    depends_on:
-      - dashboard-v2-frontend
-    volumes:
-      - ./secrets.json:/app/config/secrets.json:ro
-
-  dashboard-mock:
-    build:
-      context: .
-      dockerfile: services/dashboard/Dockerfile
-    container_name: dashboard-mock
-    profiles: ["mock"]
-    env_file:
-      - infrastructure/env-vars-mock.yaml
-    volumes:
-      - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
-    environment:
-      - PORT=8080
-      - SECRETS_FILE=/app/config/secrets.json
-    ports:
-      - "9501:8080"
-    depends_on:
-      kis-gateway-mock:
-        condition: service_healthy
-      chromadb:
-        condition: service_started
-    networks:
-      - msa-network
-
-  dashboard-tunnel-mock:
-    build:
-      context: .
-      dockerfile: services/cloudflared/Dockerfile
-    container_name: dashboard-tunnel-mock
-    restart: unless-stopped
-    profiles: ["mock"]
-    depends_on:
-      - dashboard-mock
-    volumes:
-      - ./secrets.json:/app/config/secrets.json:ro
-    networks:
-      - msa-network
 
   # ============================================================================
   # 🚀 Dashboard V2 - React + FastAPI (NEW!)
@@ -693,7 +587,6 @@ services:
       - MARIADB_DBNAME=jennie_db
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./wallet:/app/wallet:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       redis:
@@ -723,41 +616,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # ============================================================================
-  # 📝 Exam App (AI 모의고사 시스템)
-  # ============================================================================
-  exam-app-backend:
-    build:
-      context: .
-      dockerfile: services/exam-app/backend/Dockerfile
-    container_name: exam-app-backend
-    profiles: ["real"]
-    network_mode: host
-    environment:
-      - MARIADB_HOST=127.0.0.1
-      - MARIADB_PORT=3306
-      - MARIADB_USER=root
-      - MARIADB_PASSWORD=q1w2e3R$
-      - EXAM_DB_NAME=jennie_exam_db
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8100/health\")' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  exam-app-frontend:
-    build:
-      context: .
-      dockerfile: services/exam-app/frontend/Dockerfile
-    container_name: exam-app-frontend
-    profiles: ["real"]
-    network_mode: host
-    depends_on:
-      exam-app-backend:
-        condition: service_healthy
-    restart: unless-stopped
 
 networks:
   msa-network:

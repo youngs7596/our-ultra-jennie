@@ -1,0 +1,167 @@
+digraph MyUltraJennie {
+    // 전체 스타일 설정
+    bgcolor="#1a1a2e";
+    fontname="Helvetica,Arial,sans-serif";
+    label="Ultra Jennie - AI 자율 트레이딩 시스템\n(WSL2 Docker Compose)";
+    labelloc=t;
+    fontsize=18;
+    fontcolor="white";
+    rankdir=TB;
+    compound=true;
+    newrank=true;
+    splines=polyline;
+    nodesep=0.5;
+    ranksep=0.8;
+
+    // 기본 노드 스타일
+    node [
+        style="rounded,filled",
+        shape=box,
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=9,
+        fontcolor="white",
+        width=1.2,
+        height=0.5
+    ];
+
+    // 기본 엣지 스타일
+    edge [
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=7,
+        fontcolor="white",
+        color="#666666",
+        penwidth=1.5
+    ];
+
+    // ============================================================
+    // 사용자 인터페이스
+    // ============================================================
+    subgraph cluster_ui {
+        label="사용자 인터페이스";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0f0ff";
+        color="#d0d0d0";
+        fontcolor="#2d3561";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+        
+        USER [label="사용자", shape=ellipse, fillcolor="#4a69bd", color="#6a89cc"];
+        DASH_V2 [label="Dashboard V2\nReact + FastAPI", fillcolor="#3c6382", color="#60a3bc"];
+        
+        USER -> DASH_V2 [color="#3c6382", penwidth=2];
+    }
+
+    // ============================================================
+    // AI / 분석 서비스
+    // ============================================================
+    subgraph cluster_ai_services {
+        label="AI / 분석 서비스";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0f0ff";
+        color="#d0d0d0";
+        fontcolor="#0c2461";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+        
+        LLM [label="JennieBrain\nClaude / Gemini", fillcolor="#6a0dad", color="#9b59b6"];
+        NEWS_CRAWLER [label="News Crawler\n뉴스/RSS 수집", fillcolor="#1e5f74", color="#3498db"];
+        CLASSIFIER [label="NewsClassifier\n뉴스 분류", fillcolor="#1e3799", color="#4a69bd"];
+        SCOUT [label="Scout Job v5.1\n종목 발굴", fillcolor="#1e3799", color="#4a69bd"];
+        HYBRID [label="Hybrid Scoring\n복합 점수", fillcolor="#1e3799", color="#4a69bd"];
+        COMP_ANALYZER [label="Competitor Analyzer\n경쟁사 분석", fillcolor="#1e3799", color="#4a69bd"];
+        PAIR_STRAT [label="Pair Trading\n롱/숏 전략", fillcolor="#1e3799", color="#4a69bd"];
+        BACKTESTER [label="Backtester\n백테스트", fillcolor="#1e3799", color="#4a69bd"];
+        DAILY_BRIEF [label="Daily Briefing\n일일 요약", fillcolor="#1e5f74", color="#3498db"];
+        
+        // 내부 연결
+        NEWS_CRAWLER -> CLASSIFIER [color="#1e5f74", penwidth=2];
+        CLASSIFIER -> SCOUT [color="#1e3799", penwidth=2];
+        SCOUT -> LLM [color="#6a0dad", label="AI", penwidth=2];
+        SCOUT -> HYBRID [color="#1e3799", penwidth=2];
+        SCOUT -> COMP_ANALYZER [color="#1e3799", penwidth=2];
+        COMP_ANALYZER -> PAIR_STRAT [color="#1e3799", penwidth=2];
+        BACKTESTER -> COMP_ANALYZER [style=dashed, color="#1e3799", penwidth=2];
+    }
+
+    // ============================================================
+    // 주문 실행 서비스
+    // ============================================================
+    subgraph cluster_execution {
+        label="주문 실행";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0fff0";
+        color="#d0d0d0";
+        fontcolor="#0a5d5d";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+        
+        BUY_SCAN [label="Buy Scanner\n매수 스캔", fillcolor="#079992", color="#38ada9"];
+        BUY_EXEC [label="Buy Executor\n매수 실행", fillcolor="#079992", color="#38ada9"];
+        SELL_EXEC [label="Sell Executor\n매도 실행", fillcolor="#079992", color="#38ada9"];
+        PRICE_MON [label="Price Monitor\n시세 감시", fillcolor="#079992", color="#38ada9"];
+        RABBITMQ [label="RabbitMQ\n메시지 큐", shape=cylinder, fillcolor="#f39c12", color="#d68910"];
+        KIS_GW [label="KIS Gateway\n한국투자증권", fillcolor="#6F1E51", color="#b71540"];
+        
+        // 내부 연결
+        BUY_SCAN -> RABBITMQ [color="#f39c12", penwidth=2];
+        PRICE_MON -> RABBITMQ [color="#f39c12", penwidth=2];
+        RABBITMQ -> BUY_EXEC [color="#f39c12", penwidth=2];
+        RABBITMQ -> SELL_EXEC [color="#f39c12", penwidth=2];
+        BUY_EXEC -> KIS_GW [color="#b71540", label="매수", penwidth=2];
+        SELL_EXEC -> KIS_GW [color="#b71540", label="매도", penwidth=2];
+        PRICE_MON -> KIS_GW [color="#b71540", label="시세", penwidth=2];
+    }
+
+    // ============================================================
+    // 데이터 저장소
+    // ============================================================
+    subgraph cluster_datastore {
+        label="데이터 저장소";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f5f5f5";
+        color="#d0d0d0";
+        fontcolor="#1a5a1a";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+        
+        MARIADB [label="MariaDB\n포트폴리오/관심종목\n거래기록", shape=cylinder, fillcolor="#27ae60", color="#2ecc71"];
+        REDIS [label="Redis\n캐시/감성분석", shape=cylinder, fillcolor="#e74c3c", color="#c0392b"];
+        CHROMADB [label="ChromaDB\n벡터 저장소", shape=cylinder, fillcolor="#9b59b6", color="#8e44ad"];
+    }
+
+    // ============================================================
+    // 레이아웃 제어
+    // ============================================================
+    { rank=same; USER; NEWS_CRAWLER; BUY_SCAN; }
+    
+    // UI -> Data Storage 연결
+    DASH_V2 -> MARIADB [color="#27ae60", label="조회", weight=10, penwidth=2];
+    DASH_V2 -> REDIS [color="#e74c3c", label="실시간", penwidth=2];
+
+    // ============================================================
+    // 클러스터 간 연결
+    // ============================================================
+
+    // AI 서비스 -> 데이터 저장소
+    SCOUT -> MARIADB [color="#27ae60", label="관심종목"];
+    SCOUT -> REDIS [color="#e74c3c", label="캐시"];
+    SCOUT -> CHROMADB [color="#9b59b6", label="RAG"];
+    HYBRID -> MARIADB [color="#27ae60"];
+    COMP_ANALYZER -> MARIADB [color="#27ae60"];
+    COMP_ANALYZER -> REDIS [color="#e74c3c"];
+    NEWS_CRAWLER -> CHROMADB [color="#9b59b6", label="벡터"];
+    NEWS_CRAWLER -> MARIADB [color="#27ae60"];
+    DAILY_BRIEF -> MARIADB [color="#27ae60"];
+
+    // 주문 실행 -> 데이터 저장소
+    BUY_EXEC -> MARIADB [color="#27ae60", label="기록"];
+    SELL_EXEC -> MARIADB [color="#27ae60", label="기록"];
+}

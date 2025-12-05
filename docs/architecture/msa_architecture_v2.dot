@@ -1,0 +1,231 @@
+digraph MySupremeJennieMSA {
+    // 전체 스타일 설정
+    graph [
+        rankdir=TB,
+        splines=ortho,
+        nodesep=0.8,
+        ranksep=1.2,
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=16,
+        label="My Supreme Jennie - MSA V2 System Architecture",
+        labelloc=t,
+        bgcolor="white",
+        fontcolor="black",
+        pad=0.5
+    ];
+
+    // 기본 노드 스타일
+    node [
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=11,
+        shape=box,
+        style="rounded,filled",
+        width=2.2,
+        height=0.8
+    ];
+
+    // 기본 엣지 스타일
+    edge [
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=9,
+        fontcolor="#333333"
+    ];
+
+    // ============================================================
+    // 계층 1: 사용자 인터페이스 (Dashboard)
+    // ============================================================
+    subgraph cluster_ui {
+        label="User Interface";
+        style="rounded,filled";
+        bgcolor="#E1F5FE"; // Light Blue
+        color="#0277BD";
+        penwidth=2;
+
+        USER [
+            label="👤 User\n(Manager)",
+            shape=person,
+            fillcolor="#B3E5FC",
+            color="#0277BD",
+            penwidth=2,
+            width=1.5
+        ];
+
+        DASHBOARD [
+            label="Dashboard\n(Streamlit Service)\nMonitoring & Control",
+            fillcolor="#4FC3F7",
+            color="#0277BD",
+            penwidth=2
+        ];
+    }
+
+    // ============================================================
+    // 계층 2: 인프라 및 트리거 (Scheduler & Messaging)
+    // ============================================================
+    subgraph cluster_infra_trigger {
+        label="Event & Trigger Infrastructure";
+        style="rounded,filled";
+        bgcolor="#F3E5F5"; // Light Purple
+        color="#7B1FA2";
+        penwidth=2;
+
+        SCHEDULER [
+            label="Cloud Scheduler\n(Cron Triggers)",
+            shape=Mdiamond,
+            fillcolor="#E1BEE7",
+            color="#7B1FA2"
+        ];
+
+        PUBSUB [
+            label="Cloud Pub/Sub\n[buy-signals]",
+            shape=folder,
+            fillcolor="#CE93D8",
+            color="#7B1FA2"
+        ];
+
+        CLOUDTASKS [
+            label="Cloud Tasks\n[sell-orders]",
+            shape=folder,
+            fillcolor="#CE93D8",
+            color="#7B1FA2"
+        ];
+    }
+
+    // ============================================================
+    // 계층 3: 마이크로서비스 (Trading Engine & Intelligence)
+    // ============================================================
+    subgraph cluster_services {
+        label="Microservices (Cloud Run)";
+        style="rounded,filled";
+        bgcolor="#E8F5E9"; // Light Green
+        color="#2E7D32";
+        penwidth=2;
+
+        // --- Trading Engine ---
+        subgraph cluster_trading {
+            label="Trading Engine";
+            style="filled";
+            bgcolor="#C8E6C9";
+            color="#2E7D32";
+
+            SCANNER [label="Buy Scanner\n(Signal Detection)", fillcolor="#81C784"];
+            BUY_EXEC [label="Buy Executor\n(Order Execution)", fillcolor="#66BB6A"];
+            SELL_EXEC [label="Sell Executor\n(Order & Reflection)", fillcolor="#66BB6A"];
+            MONITOR [label="Price Monitor\n(Real-time Watch)", fillcolor="#81C784"];
+            CMD_HANDLER [label="Command Handler\n(Async Control)", fillcolor="#A5D6A7"];
+        }
+
+        // --- Intelligence & Data ---
+        subgraph cluster_intelligence {
+            label="Intelligence & Data";
+            style="filled";
+            bgcolor="#DCEDC8";
+            color="#558B2F";
+
+            SCOUT [label="Scout Job\n(Watchlist & Opt)", fillcolor="#AED581"];
+            CRAWLER [label="News Crawler\n(Data Collection)", fillcolor="#AED581"];
+            RAG_CACHER [label="RAG Cacher\n(Vectorization)", fillcolor="#AED581"];
+        }
+    }
+
+    // ============================================================
+    // 계층 4: Core Infrastructure (Gateway & Auth)
+    // ============================================================
+    subgraph cluster_core {
+        label="Core Infrastructure";
+        style="rounded,filled";
+        bgcolor="#FFF3E0"; // Light Orange
+        color="#EF6C00";
+        penwidth=2;
+
+        GATEWAY [
+            label="KIS Gateway v2\n(Rate Limit & Circuit Breaker)",
+            shape=component,
+            fillcolor="#FFB74D",
+            color="#EF6C00",
+            penwidth=3,
+            width=3.0
+        ];
+
+        REDIS [
+            label="Redis\n(Rate Limit Backend)",
+            shape=cylinder,
+            fillcolor="#FFE0B2",
+            color="#EF6C00"
+        ];
+
+        GCS [
+            label="GCS\n(Token Management)",
+            shape=folder,
+            fillcolor="#FFE0B2",
+            color="#EF6C00"
+        ];
+    }
+
+    // ============================================================
+    // 계층 5: 데이터베이스 & 외부 API
+    // ============================================================
+    subgraph cluster_storage {
+        label="Storage & External API";
+        style="rounded,filled";
+        bgcolor="#ECEFF1"; // Light Grey
+        color="#455A64";
+        penwidth=2;
+
+        OCI [label="Oracle DB\n(Portfolio/Logs)", shape=cylinder, fillcolor="#90A4AE", fontcolor="white"];
+        CHROMA [label="ChromaDB\n(Vector Store)", shape=cylinder, fillcolor="#90A4AE", fontcolor="white"];
+
+        KIS_API [label="KIS API\n(Real/Mock)", shape=component, fillcolor="#CFD8DC"];
+        GEMINI [label="Gemini LLM\n(Vertex AI)", shape=component, fillcolor="#CFD8DC"];
+    }
+
+    // ============================================================
+    // 연결 관계 정의
+    // ============================================================
+
+    // 1. User & Dashboard
+    USER -> DASHBOARD [label="Access"];
+    DASHBOARD -> GATEWAY [label="Order/Data"];
+    DASHBOARD -> OCI [label="Query"];
+    DASHBOARD -> CHROMA [label="RAG Query"];
+
+    // 2. Scheduler Triggers
+    SCHEDULER -> SCOUT [label="08:00", style=dashed];
+    SCHEDULER -> SCANNER [label="10m", style=dashed];
+    SCHEDULER -> MONITOR [label="Start/Stop", style=dashed];
+    SCHEDULER -> CRAWLER [label="10m", style=dashed];
+    SCHEDULER -> CMD_HANDLER [label="1m", style=dashed];
+
+    // 3. Data Flow (Trading Engine)
+    SCANNER -> PUBSUB [label="Signal"];
+    PUBSUB -> BUY_EXEC [label="Sub"];
+    
+    MONITOR -> CLOUDTASKS [label="Trigger Sell"];
+    CLOUDTASKS -> SELL_EXEC [label="Push"];
+
+    // 4. Service -> Gateway -> External
+    BUY_EXEC -> GATEWAY [label="Buy Order"];
+    SELL_EXEC -> GATEWAY [label="Sell Order"];
+    MONITOR -> GATEWAY [label="Poll Price"];
+    SCOUT -> GATEWAY [label="Daily Data"];
+    
+    GATEWAY -> REDIS [label="Limit Check", style=dotted];
+    GATEWAY -> GCS [label="Token Sync", style=dotted];
+    GATEWAY -> KIS_API [label="API Call"];
+
+    // 5. Service -> DB/LLM
+    SCANNER -> GEMINI [label="Analysis"];
+    BUY_EXEC -> GEMINI [label="Validation"];
+    
+    SCOUT -> OCI [label="Watchlist"];
+    CRAWLER -> OCI [label="News"];
+    CRAWLER -> CHROMA [label="Embedding"];
+    RAG_CACHER -> CHROMA [label="Cache"];
+
+    // 6. DB Access
+    {BUY_EXEC, SELL_EXEC, MONITOR} -> OCI [label="R/W"];
+
+    // Layout Helpers
+    {rank=same; SCANNER; BUY_EXEC; SELL_EXEC; MONITOR;}
+    {rank=same; SCOUT; CRAWLER; RAG_CACHER;}
+}
+

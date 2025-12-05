@@ -19,9 +19,6 @@ COPY shared/ /app/shared/
 # kis-gateway 서비스 코드 복사
 COPY services/kis-gateway/ /app/kis-gateway/
 
-# Oracle Wallet 복사
-COPY wallet/ /app/wallet/
-
 # Python 경로 설정
 ENV PYTHONPATH=/app
 

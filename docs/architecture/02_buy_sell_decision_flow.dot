@@ -1,0 +1,171 @@
+digraph BuySellDecisionFlow {
+    // 전체 스타일 설정
+    bgcolor="#1a1a2e";
+    fontname="Helvetica,Arial,sans-serif";
+    label="Ultra Jennie - 매수/매도 의사결정 흐름";
+    labelloc=t;
+    fontsize=18;
+    fontcolor="white";
+    rankdir=TB;
+    compound=true;
+    splines=polyline;
+    nodesep=0.6;
+    ranksep=0.8;
+
+    // 기본 노드 스타일
+    node [
+        style="rounded,filled",
+        shape=box,
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=9,
+        fontcolor="white",
+        width=1.4,
+        height=0.6
+    ];
+
+    // 기본 엣지 스타일
+    edge [
+        fontname="Helvetica,Arial,sans-serif",
+        fontsize=8,
+        fontcolor="white",
+        penwidth=2
+    ];
+
+    // ============================================================
+    // 종목 발굴 (Scout Phase)
+    // ============================================================
+    subgraph cluster_scout {
+        label="1. 종목 발굴 (Scout Phase)";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0f0ff";
+        color="#d0d0d0";
+        fontcolor="#0c2461";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        SCOUT [label="Scout Job v5.1\n종목 발굴", fillcolor="#1e3799", color="#4a69bd"];
+        LLM [label="JennieBrain\n(LLM)", fillcolor="#6a0dad", color="#9b59b6"];
+        NEWS [label="News Crawler\n뉴스/RSS", fillcolor="#1e5f74", color="#3498db"];
+        REDIS_COMP [label="Redis\n경쟁사 수혜점수", fillcolor="#e74c3c", color="#c0392b", shape=cylinder];
+        
+        NEWS -> SCOUT [color="#3498db", label="뉴스 분류"];
+        SCOUT -> LLM [color="#9b59b6", label="Hunter/Judge"];
+        LLM -> SCOUT [color="#9b59b6", label="분석 결과"];
+        SCOUT -> REDIS_COMP [color="#e74c3c", label="점수 조회"];
+    }
+
+    // ============================================================
+    // 매수 프로세스
+    // ============================================================
+    subgraph cluster_buy {
+        label="2. 매수 프로세스";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f0fff0";
+        color="#d0d0d0";
+        fontcolor="#0a5d5d";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        BUY_SCAN [label="Buy Scanner\n매수 스캔", fillcolor="#079992", color="#38ada9"];
+        MQ_BUY [label="RabbitMQ\nbuy-signals", fillcolor="#f39c12", color="#d68910", shape=cylinder];
+        BUY_EXEC [label="Buy Executor\n매수 실행", fillcolor="#079992", color="#38ada9"];
+        
+        BUY_SCAN -> MQ_BUY [color="#f39c12", label="매수 후보"];
+        MQ_BUY -> BUY_EXEC [color="#f39c12", label="매수 명령"];
+    }
+
+    // ============================================================
+    // 매도 프로세스
+    // ============================================================
+    subgraph cluster_sell {
+        label="3. 매도 프로세스";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#fff0f0";
+        color="#d0d0d0";
+        fontcolor="#6F1E51";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        PRICE_MON [label="Price Monitor\n시세 감시", fillcolor="#c0392b", color="#e74c3c"];
+        MQ_SELL [label="RabbitMQ\nsell-orders", fillcolor="#f39c12", color="#d68910", shape=cylinder];
+        SELL_EXEC [label="Sell Executor\n매도 실행", fillcolor="#c0392b", color="#e74c3c"];
+        
+        PRICE_MON -> MQ_SELL [color="#f39c12", label="매도 신호\n(손절/익절)"];
+        MQ_SELL -> SELL_EXEC [color="#f39c12", label="매도 명령"];
+    }
+
+    // ============================================================
+    // 데이터 저장소
+    // ============================================================
+    subgraph cluster_data {
+        label="데이터 저장소";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f5f5f5";
+        color="#d0d0d0";
+        fontcolor="#1a5a1a";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        DB [label="MariaDB\nWatchlist/Portfolio\nTradeLogs", fillcolor="#27ae60", color="#2ecc71", shape=cylinder];
+    }
+
+    // ============================================================
+    // 외부 시스템
+    // ============================================================
+    subgraph cluster_external {
+        label="외부 시스템";
+        labeljust=l;
+        style="rounded,filled";
+        bgcolor="#f5f0ff";
+        color="#d0d0d0";
+        fontcolor="#4a1942";
+        fontsize=10;
+        penwidth=2;
+        margin=12;
+
+        KIS [label="KIS Gateway\n한국투자증권", fillcolor="#6F1E51", color="#b71540"];
+    }
+
+    // ============================================================
+    // 클러스터 간 연결
+    // ============================================================
+    
+    // Scout -> DB (Watchlist 저장)
+    SCOUT -> DB [color="#27ae60", label="Watchlist\n저장"];
+    
+    // DB -> Buy Scanner (Watchlist 조회)
+    DB -> BUY_SCAN [color="#27ae60", label="Watchlist\n조회"];
+    
+    // Buy Executor -> KIS (매수 주문)
+    BUY_EXEC -> KIS [color="#c0392b", label="매수 주문"];
+    
+    // Buy Executor -> DB (거래 기록)
+    BUY_EXEC -> DB [color="#27ae60", label="TradeLog"];
+    
+    // Price Monitor -> KIS (시세 조회)
+    PRICE_MON -> KIS [color="#3498db", label="실시간 시세"];
+    
+    // Price Monitor -> DB (포트폴리오 조회)
+    DB -> PRICE_MON [color="#27ae60", label="Portfolio\n조회"];
+    
+    // Sell Executor -> KIS (매도 주문)
+    SELL_EXEC -> KIS [color="#c0392b", label="매도 주문"];
+    
+    // Sell Executor -> DB (거래 기록)
+    SELL_EXEC -> DB [color="#27ae60", label="TradeLog"];
+
+    // ============================================================
+    // 레이아웃 제어
+    // ============================================================
+    { rank=same; SCOUT; BUY_SCAN; PRICE_MON; }
+    { rank=same; DB; KIS; }
+}
+

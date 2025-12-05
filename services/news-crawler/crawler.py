@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 # crawler_job.py
-# Version: v9.0
+# Version: v9.1
 # 작업 LLM: Claude Opus 4.5
 # Crawler Job - Cloud Scheduler(HTTP)에 의해 10분마다 실행되는 스크립트
 # [v9.0] KOSPI 200 전체 뉴스 수집 (WatchList 의존성 제거)
+# [v9.1] 경쟁사 수혜 분석 연동 (Claude Opus 4.5)
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
@@ -47,6 +48,9 @@ try:
     import shared.database as database
     from shared.llm import JennieBrain # 감성 분석을 위한 JennieBrain 임포트
     from shared.gemini import ensure_gemini_api_key
+    # [v9.1] 경쟁사 수혜 분석 모듈
+    from shared.news_classifier import NewsClassifier, get_classifier
+    from shared.hybrid_scoring.competitor_analyzer import CompetitorAnalyzer
     logger.info("✅ 'shared' 패키지 모듈 import 성공")
 except ImportError as e: # type: ignore
     logger.error(f"🚨 'shared' 공용 패키지를 찾을 수 없습니다! (오류: {e})")
@@ -54,12 +58,18 @@ except ImportError as e: # type: ignore
     database = None
     JennieBrain = None
     ensure_gemini_api_key = None
+    NewsClassifier = None
+    get_classifier = None
+    CompetitorAnalyzer = None
 except Exception as e:
     logger.error(f"🚨 'shared' 패키지 import 중 예상치 못한 오류 발생: {e}", exc_info=True)
     auth = None
     database = None
     JennieBrain = None
     ensure_gemini_api_key = None
+    NewsClassifier = None
+    get_classifier = None
+    CompetitorAnalyzer = None
 
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
@@ -420,6 +430,148 @@ def process_sentiment_analysis(documents):
         
     logger.info(f"✅ [Sentiment] 종목 뉴스 {processed_count}건 감성 분석 및 저장 완료.")
 
+
+def process_competitor_benefit_analysis(documents):
+    """
+    [v9.1] 뉴스에서 경쟁사 수혜 기회를 분석합니다.
+    
+    악재(보안사고, 리콜, 오너리스크 등) 발생 시:
+    1. 해당 종목의 경쟁사들을 조회
+    2. 수혜 점수를 계산하여 Redis에 저장
+    3. DB에 이벤트 기록
+    """
+    if not get_classifier or not CompetitorAnalyzer or not documents:
+        return
+    
+    logger.info(f"  [경쟁사 수혜] 신규 문서 {len(documents)}개 경쟁사 수혜 분석 시작...")
+    
+    # 모듈 초기화
+    classifier = get_classifier()
+    competitor_analyzer = CompetitorAnalyzer()
+    
+    # DB 연결 (SQLAlchemy)
+    from shared.db.connection import init_engine, get_session
+    from shared.db.models import IndustryCompetitors, CompetitorBenefitEvents
+    from datetime import timedelta
+    
+    try:
+        init_engine(None, None, None, None)
+        session = get_session()
+    except Exception as e:
+        logger.error(f"❌ [경쟁사 수혜] DB 연결 실패: {e}")
+        return
+    
+    benefit_events_created = 0
+    
+    for doc in documents:
+        stock_code = doc.metadata.get("stock_code")
+        if not stock_code:
+            continue
+        
+        # 뉴스 제목 추출
+        content_lines = doc.page_content.split('\n')
+        news_title = content_lines[0].replace("뉴스 제목: ", "") if len(content_lines) > 0 else ""
+        news_link = doc.metadata.get("source_url")
+        
+        # 1. 뉴스 분류
+        classification = classifier.classify(news_title)
+        if not classification:
+            continue
+        
+        # 2. 악재인지 확인 (경쟁사 수혜가 있는 카테고리만)
+        if classification.sentiment != 'NEGATIVE' or classification.competitor_benefit <= 0:
+            continue
+        
+        logger.info(f"  🔴 [악재 감지] {stock_code} - {classification.category}: {news_title[:50]}...")
+        
+        # 3. 해당 종목의 섹터 및 경쟁사 조회
+        affected_stock = session.query(IndustryCompetitors).filter(
+            IndustryCompetitors.stock_code == stock_code
+        ).first()
+        
+        if not affected_stock:
+            logger.debug(f"     → {stock_code}는 경쟁사 매핑에 없음 (Skip)")
+            continue
+        
+        sector_code = affected_stock.sector_code
+        sector_name = affected_stock.sector_name
+        affected_name = affected_stock.stock_name
+        
+        # 4. 동일 섹터 경쟁사 조회
+        competitors = session.query(IndustryCompetitors).filter(
+            IndustryCompetitors.sector_code == sector_code,
+            IndustryCompetitors.stock_code != stock_code,
+            IndustryCompetitors.is_active == 1
+        ).all()
+        
+        if not competitors:
+            logger.debug(f"     → {sector_name} 섹터에 경쟁사 없음 (Skip)")
+            continue
+        
+        # 5. 각 경쟁사에 대해 수혜 이벤트 생성
+        expires_at = datetime.now(timezone.utc) + timedelta(days=classification.duration_days)
+        
+        for competitor in competitors:
+            # 기존 동일 이벤트가 있는지 확인 (24시간 내 중복 방지)
+            existing = session.query(CompetitorBenefitEvents).filter(
+                CompetitorBenefitEvents.affected_stock_code == stock_code,
+                CompetitorBenefitEvents.beneficiary_stock_code == competitor.stock_code,
+                CompetitorBenefitEvents.event_type == classification.category,
+                CompetitorBenefitEvents.detected_at >= datetime.now(timezone.utc) - timedelta(hours=24)
+            ).first()
+            
+            if existing:
+                logger.debug(f"     → {competitor.stock_name} 이미 이벤트 존재 (Skip)")
+                continue
+            
+            # 수혜 이벤트 생성
+            benefit_event = CompetitorBenefitEvents(
+                affected_stock_code=stock_code,
+                affected_stock_name=affected_name,
+                event_type=classification.category,
+                event_title=news_title[:1000],
+                event_severity=classification.base_score,
+                source_url=news_link,
+                beneficiary_stock_code=competitor.stock_code,
+                beneficiary_stock_name=competitor.stock_name,
+                benefit_score=classification.competitor_benefit,
+                sector_code=sector_code,
+                sector_name=sector_name,
+                status='ACTIVE',
+                expires_at=expires_at
+            )
+            session.add(benefit_event)
+            benefit_events_created += 1
+            
+            logger.info(
+                f"  ✅ [수혜 등록] {competitor.stock_name}({competitor.stock_code}) "
+                f"+{classification.competitor_benefit}점 ← {affected_name} {classification.category}"
+            )
+            
+            # 6. Redis에 수혜 점수 저장 (Scout Job에서 활용)
+            try:
+                database.set_competitor_benefit_score(
+                    stock_code=competitor.stock_code,
+                    score=classification.competitor_benefit,
+                    reason=f"경쟁사 {affected_name}의 {classification.category}로 인한 수혜",
+                    affected_stock=stock_code,
+                    event_type=classification.category,
+                    ttl=classification.duration_days * 86400
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ [경쟁사 수혜] Redis 저장 실패: {e}")
+    
+    # 커밋
+    try:
+        session.commit()
+        logger.info(f"✅ [경쟁사 수혜] 수혜 이벤트 {benefit_events_created}건 생성 완료")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ [경쟁사 수혜] DB 커밋 실패: {e}")
+    finally:
+        session.close()
+
+
 def add_documents_to_chroma(documents):
     """
     새로운 Document 리스트를 분할(Chunking) 후 벡터로 변환하여 ChromaDB에 저장합니다.
@@ -507,13 +659,16 @@ def run_collection_job():
         # [New] 4-1. 새로운 문서 감성 분석 및 저장
         process_sentiment_analysis(new_documents_to_add)
         
+        # [v9.1] 4-2. 경쟁사 수혜 분석 및 저장
+        process_competitor_benefit_analysis(new_documents_to_add)
+        
         # 5. '새로운' 문서만 Chroma 서버에 저장 (Write)
         add_documents_to_chroma(new_documents_to_add)
         
         # 6. 오래된 데이터 정리
         cleanup_old_data_job()
         
-        logger.info(f"--- [RAG 수집 봇 v9.0] 작업 완료 ---")
+        logger.info(f"--- [RAG 수집 봇 v9.1] 작업 완료 ---")
         
     except Exception as e:
         logger.exception(f"🔥 [RAG 수집 봇 v9.0] 메인 작업 중 심각한 오류 발생")

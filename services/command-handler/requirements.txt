@@ -8,7 +8,6 @@ gunicorn==21.2.0
 python-dotenv==1.0.1
 
 # Oracle DB
-oracledb==2.2.0
 SQLAlchemy==2.0.31
 
 # Data Processing

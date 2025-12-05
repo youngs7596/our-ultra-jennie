@@ -35,9 +35,6 @@ RUN chmod +x /app/scripts/build_strategy_core.sh && /app/scripts/build_strategy_
 # Copy service code
 COPY services/scout-job /app/services/scout-job
 
-# Copy Oracle Wallet
-COPY wallet /app/wallet
-
 # Copy utilities (for Backtester)
 COPY utilities /app/utilities
 

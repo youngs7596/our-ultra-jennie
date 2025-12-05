@@ -4,7 +4,7 @@
 
 set -e
 
-PROJECT_ROOT="/home/youngs75/projects/my-supreme-jennie"
+PROJECT_ROOT="/home/youngs75/projects/my-ultra-jennie"
 cd $PROJECT_ROOT
 
 echo "🐳 Docker Compose 로컬 MSA 테스트"

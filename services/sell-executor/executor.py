@@ -209,7 +209,16 @@ class SellExecutor:
                 if self.telegram_bot:
                     try:
                         profit_emoji = "📈" if profit_pct > 0 else "📉"
-                        message = f"""{profit_emoji} *매도 체결*
+                        
+                        # Mock/Real 모드 및 DRY_RUN 표시
+                        trading_mode = os.getenv('TRADING_MODE', 'REAL')
+                        mode_indicator = ""
+                        if trading_mode == "MOCK":
+                            mode_indicator = "🧪 *[MOCK 테스트]*\n"
+                        if dry_run:
+                            mode_indicator += "⚠️ *[DRY RUN - 실제 주문 없음]*\n"
+                        
+                        message = f"""{mode_indicator}{profit_emoji} *매도 체결*
 
 📊 *종목*: {stock_name} ({stock_code})
 💵 *매도가*: {current_price:,}원

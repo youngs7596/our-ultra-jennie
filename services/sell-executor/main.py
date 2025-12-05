@@ -103,22 +103,11 @@ def initialize_service():
     load_dotenv()
     
     try:
-        # 1. DB Connection Pool 초기화
-        if not database.is_pool_initialized():
-            logger.info("🔧 DB Connection Pool 초기화 중...")
-            db_user = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_USER"))
-            db_password = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"))
-            
-            database.init_connection_pool(
-                db_user=db_user,
-                db_password=db_password,
-                db_service_name=os.getenv("OCI_DB_SERVICE_NAME"),
-                wallet_path=os.getenv("OCI_WALLET_DIR_NAME", "/app/wallet"),
-                min_sessions=1,
-                max_sessions=5,
-                increment=1
-            )
-            logger.info("✅ DB Connection Pool 초기화 완료")
+        # 1. DB Connection Pool 초기화 (SQLAlchemy 사용)
+        from shared.db.connection import ensure_engine_initialized
+        logger.info("🔧 DB Connection 초기화 중...")
+        ensure_engine_initialized()
+        logger.info("✅ DB Connection 초기화 완료")
         
         # 2. KIS API 초기화
         trading_mode = os.getenv("TRADING_MODE", "MOCK")

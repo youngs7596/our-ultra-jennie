@@ -8,7 +8,6 @@ chromadb
 python-dotenv
 
 # Oracle DB (다른 utilities용)
-oracledb
 SQLAlchemy==2.0.31
 pandas
 

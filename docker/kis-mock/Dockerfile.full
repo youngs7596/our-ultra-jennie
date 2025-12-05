@@ -6,8 +6,6 @@ WORKDIR /app
 COPY shared/ ./shared/
 COPY utilities/mock_kis_api_server.py .
 COPY utilities/requirements.txt .
-COPY wallet/ ./wallet/
-
 # 의존성 설치
 RUN pip install --no-cache-dir -r requirements.txt
 

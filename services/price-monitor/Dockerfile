@@ -18,9 +18,6 @@ RUN apt-get update && apt-get install -y \
     cargo \
     && rm -rf /var/lib/apt/lists/*
 
-# Oracle Wallet 복사
-COPY wallet/ /app/wallet/
-
 # shared / configs / build script 복사
 COPY shared/ /app/shared/
 COPY prompts/ /app/prompts/

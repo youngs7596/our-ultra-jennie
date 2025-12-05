@@ -1674,3 +1674,227 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유 (2-3
             logger.error(f"❌ [JennieBrain/v5.0.3] 분석 실패: {e}")
             return {'score': 50, 'grade': 'C', 'reason': f"분석 오류: {e}"}
 
+    # =================================================================
+    # [v5.2] 경쟁사 수혜 분석 (Competitor Benefit Analysis)
+    # Claude, Gemini, GPT 3자 합의 기반 설계
+    # =================================================================
+    
+    def analyze_competitor_benefit(self, 
+                                    target_stock_code: str,
+                                    target_stock_name: str,
+                                    sector: str,
+                                    recent_news: str) -> dict:
+        """
+        [v5.2] 경쟁사 악재로 인한 반사이익 분석
+        
+        예: 쿠팡 개인정보 유출 → 네이버/컬리 수혜 분석
+        
+        Args:
+            target_stock_code: 분석 대상 종목 코드
+            target_stock_name: 분석 대상 종목명
+            sector: 섹터 코드 (ECOMMERCE, SEMICONDUCTOR 등)
+            recent_news: 최근 뉴스 요약 (경쟁사 뉴스 포함)
+        
+        Returns:
+            {
+                'competitor_events': [{'company': str, 'event_type': str, ...}],
+                'total_benefit_score': int,
+                'analysis_reason': str
+            }
+        """
+        try:
+            from prompts.competitor_benefit_prompt import (
+                build_competitor_event_detection_prompt,
+                COMPETITOR_GROUPS,
+                EVENT_IMPACT_RULES
+            )
+        except ImportError:
+            logger.warning("⚠️ [JennieBrain/v5.2] competitor_benefit_prompt 모듈 로드 실패")
+            return {'competitor_events': [], 'total_benefit_score': 0, 'analysis_reason': '모듈 로드 실패'}
+        
+        # Claude Haiku 우선 (빠르고 프롬프트 준수 우수)
+        provider = self.provider_claude if hasattr(self, 'provider_claude') and self.provider_claude else \
+                   (self.provider_openai if self.provider_openai else self.provider_gemini)
+        
+        if provider is None:
+            logger.error("❌ [JennieBrain/v5.2] LLM 모델이 초기화되지 않았습니다!")
+            return {'competitor_events': [], 'total_benefit_score': 0, 'analysis_reason': 'LLM 미초기화'}
+        
+        # 프롬프트 생성
+        prompt = build_competitor_event_detection_prompt(
+            target_stock_code=target_stock_code,
+            target_stock_name=target_stock_name,
+            sector=sector,
+            recent_news=recent_news
+        )
+        
+        # JSON 스키마 정의
+        COMPETITOR_EVENT_SCHEMA = {
+            "type": "object",
+            "properties": {
+                "competitor_events": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "company": {"type": "string"},
+                            "event_type": {"type": "string"},
+                            "summary": {"type": "string"},
+                            "severity": {"type": "string"},
+                            "benefit_score": {"type": "integer"}
+                        }
+                    }
+                },
+                "total_benefit_score": {"type": "integer"},
+                "analysis_reason": {"type": "string"}
+            },
+            "required": ["competitor_events", "total_benefit_score", "analysis_reason"]
+        }
+        
+        try:
+            logger.info(f"--- [JennieBrain/v5.2] 경쟁사 수혜 분석 ({provider.name}): {target_stock_name} ---")
+            
+            result = provider.generate_json(
+                prompt,
+                COMPETITOR_EVENT_SCHEMA,
+                temperature=0.2
+            )
+            
+            # 결과 로깅
+            events = result.get('competitor_events', [])
+            total_benefit = result.get('total_benefit_score', 0)
+            
+            if events:
+                logger.info(f"   🎯 경쟁사 악재 감지: {len(events)}건")
+                for event in events:
+                    logger.info(f"      - {event.get('company')}: {event.get('event_type')} (+{event.get('benefit_score', 0)}점)")
+                logger.info(f"   📊 총 수혜 점수: +{total_benefit}점")
+            else:
+                logger.info(f"   ℹ️ 경쟁사 악재 없음 (수혜 점수: 0)")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ [JennieBrain/v5.2] 경쟁사 수혜 분석 실패: {e}")
+            return {'competitor_events': [], 'total_benefit_score': 0, 'analysis_reason': f"분석 오류: {e}"}
+    
+    def get_beneficiary_recommendations(self,
+                                         event_company: str,
+                                         event_type: str,
+                                         event_summary: str,
+                                         sector: str) -> dict:
+        """
+        [v5.2] 악재 발생 시 수혜 종목 추천
+        
+        Args:
+            event_company: 악재 발생 기업
+            event_type: 악재 유형
+            event_summary: 악재 요약
+            sector: 섹터 코드
+        
+        Returns:
+            {
+                'beneficiaries': [{'stock_code': str, 'stock_name': str, 'benefit_score': int, ...}],
+                'top_pick': str,
+                'holding_period': str,
+                'risk_note': str
+            }
+        """
+        try:
+            from prompts.competitor_benefit_prompt import build_beneficiary_recommendation_prompt
+        except ImportError:
+            logger.warning("⚠️ [JennieBrain/v5.2] competitor_benefit_prompt 모듈 로드 실패")
+            return {'beneficiaries': [], 'top_pick': None, 'holding_period': 'N/A', 'risk_note': '모듈 로드 실패'}
+        
+        provider = self.provider_claude if hasattr(self, 'provider_claude') and self.provider_claude else \
+                   (self.provider_openai if self.provider_openai else self.provider_gemini)
+        
+        if provider is None:
+            return {'beneficiaries': [], 'top_pick': None, 'holding_period': 'N/A', 'risk_note': 'LLM 미초기화'}
+        
+        prompt = build_beneficiary_recommendation_prompt(
+            event_company=event_company,
+            event_type=event_type,
+            event_summary=event_summary,
+            sector=sector
+        )
+        
+        BENEFICIARY_SCHEMA = {
+            "type": "object",
+            "properties": {
+                "beneficiaries": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "stock_code": {"type": "string"},
+                            "stock_name": {"type": "string"},
+                            "benefit_score": {"type": "integer"},
+                            "reason": {"type": "string"},
+                            "strategy": {"type": "string"}
+                        }
+                    }
+                },
+                "top_pick": {"type": "string"},
+                "holding_period": {"type": "string"},
+                "risk_note": {"type": "string"}
+            },
+            "required": ["beneficiaries", "top_pick", "holding_period", "risk_note"]
+        }
+        
+        try:
+            logger.info(f"--- [JennieBrain/v5.2] 수혜 종목 추천: {event_company} {event_type} ---")
+            
+            result = provider.generate_json(
+                prompt,
+                BENEFICIARY_SCHEMA,
+                temperature=0.3
+            )
+            
+            # 결과 로깅
+            beneficiaries = result.get('beneficiaries', [])
+            top_pick = result.get('top_pick')
+            
+            if beneficiaries:
+                logger.info(f"   🎯 수혜 종목 {len(beneficiaries)}개 추천")
+                logger.info(f"   🏆 Top Pick: {top_pick}")
+                logger.info(f"   📅 권장 보유: {result.get('holding_period')}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ [JennieBrain/v5.2] 수혜 종목 추천 실패: {e}")
+            return {'beneficiaries': [], 'top_pick': None, 'holding_period': 'N/A', 'risk_note': f"분석 오류: {e}"}
+    
+    def _inject_competitor_benefit_context(self, base_prompt: str, competitor_benefit_score: int, competitor_reason: str) -> str:
+        """
+        [v5.2] 기존 프롬프트에 경쟁사 수혜 컨텍스트 주입
+        
+        Args:
+            base_prompt: 기존 분석 프롬프트
+            competitor_benefit_score: 경쟁사 수혜 점수
+            competitor_reason: 경쟁사 수혜 사유
+        
+        Returns:
+            경쟁사 수혜 컨텍스트가 추가된 프롬프트
+        """
+        if competitor_benefit_score <= 0:
+            return base_prompt
+        
+        competitor_context = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [추가 가산점] 경쟁사 악재로 인한 반사이익
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 **경쟁사 수혜 가산점: +{competitor_benefit_score}점**
+
+📋 사유: {competitor_reason}
+
+⚠️ 이 가산점은 경쟁사의 고유 악재로 인한 반사이익입니다.
+   기존 점수에 추가로 반영하세요.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        
+        # 프롬프트 시작 부분에 컨텍스트 추가
+        return competitor_context + "\n" + base_prompt
+

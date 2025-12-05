@@ -46,25 +46,8 @@ class BuyExecutor:
         self.market_regime_detector = MarketRegimeDetector()
     
     def _get_db_connection(self):
-        """DB 연결 생성 (Stateless)"""
-        import shared.auth as auth
-        
-        db_user = auth.get_secret(
-            os.getenv("SECRET_ID_ORACLE_DB_USER"),
-            os.getenv("GCP_PROJECT_ID")
-        )
-        db_password = auth.get_secret(
-            os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"),
-            os.getenv("GCP_PROJECT_ID")
-        )
-        db_service_name = os.getenv("OCI_DB_SERVICE_NAME")
-        wallet_path = os.getenv("OCI_WALLET_DIR_NAME", "wallet")
-        
-        # 절대 경로로 변환 (Cloud Run: /app/wallet)
-        if not wallet_path.startswith('/'):
-            wallet_path = f"/app/{wallet_path}"
-        
-        return database.get_db_connection(db_user, db_password, db_service_name, wallet_path)
+        """DB 연결 생성 (SQLAlchemy 사용)"""
+        return database.get_db_connection()
 
     def process_buy_signal(self, scan_result: dict, dry_run: bool = True) -> dict:
         """
@@ -162,11 +145,12 @@ class BuyExecutor:
             
             current_score = selected_candidate.get('llm_score', 0)
             
-            # 점수 확인 (최소 70점 이상 - B등급 이상만 매수)
-            if current_score < 70: 
+            # 점수 확인 (환경변수로 설정 가능, 기본값 70점 - B등급 이상만 매수)
+            min_llm_score = int(os.getenv('MIN_LLM_SCORE', '70'))
+            if current_score < min_llm_score: 
                  c_name = selected_candidate.get('stock_name', selected_candidate.get('name'))
-                 logger.warning(f"⚠️ 최고점 후보({c_name})의 점수({current_score})가 기준(70점) 미달입니다. 매수 건너뜀.")
-                 return {"status": "skipped", "reason": f"Low LLM Score: {current_score}"}
+                 logger.warning(f"⚠️ 최고점 후보({c_name})의 점수({current_score})가 기준({min_llm_score}점) 미달입니다. 매수 건너뜀.")
+                 return {"status": "skipped", "reason": f"Low LLM Score: {current_score} < {min_llm_score}"}
 
             stock_code = selected_candidate.get('stock_code', selected_candidate.get('code'))
             stock_name = selected_candidate.get('stock_name', selected_candidate.get('name'))
@@ -355,7 +339,16 @@ class BuyExecutor:
             if self.telegram_bot:
                 try:
                     total_amount = position_size * current_price
-                    message = f"""💰 *매수 체결*
+                    
+                    # Mock/Real 모드 및 DRY_RUN 표시
+                    trading_mode = os.getenv('TRADING_MODE', 'REAL')
+                    mode_indicator = ""
+                    if trading_mode == "MOCK":
+                        mode_indicator = "🧪 *[MOCK 테스트]*\n"
+                    if dry_run:
+                        mode_indicator += "⚠️ *[DRY RUN - 실제 주문 없음]*\n"
+                    
+                    message = f"""{mode_indicator}💰 *매수 체결*
 
 📈 *종목*: {stock_name} ({stock_code})
 💵 *가격*: {current_price:,}원

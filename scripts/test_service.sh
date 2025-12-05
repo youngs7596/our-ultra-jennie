@@ -74,7 +74,6 @@ case $SERVICE_NAME in
 esac
 
 export PORT
-export ORACLE_WALLET_PATH="$REPO_ROOT/wallet"
 
 echo ""
 echo "설정:"

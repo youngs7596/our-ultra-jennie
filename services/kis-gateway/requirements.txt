@@ -8,7 +8,6 @@ pybreaker>=1.0.1
 redis>=5.0.0
 
 # Oracle DB
-oracledb>=2.0.0
 SQLAlchemy==2.0.31
 pandas>=2.2.0
 

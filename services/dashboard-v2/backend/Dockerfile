@@ -18,9 +18,6 @@ COPY shared /app/shared
 # 애플리케이션 코드 복사
 COPY services/dashboard-v2/backend/*.py /app/
 
-# Oracle Wallet 복사 (필요 시)
-COPY wallet /app/wallet
-
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
