@@ -132,7 +132,7 @@ def initialize_services():
     try:
         api_key = ensure_gemini_api_key()
         embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             google_api_key=api_key,
         )
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
