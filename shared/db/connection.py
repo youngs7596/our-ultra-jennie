@@ -35,8 +35,8 @@ def _build_connection_url() -> str:
     user_enc = quote_plus(user)
     password_enc = quote_plus(password)
     
-    # PyMySQL 드라이버 사용 (auth_plugin=mysql_native_password로 GSSAPI 우회)
-    return f"mysql+pymysql://{user_enc}:{password_enc}@{host}:{port}/{dbname}?charset=utf8mb4&auth_plugin=mysql_native_password"
+    # PyMySQL 드라이버 사용
+    return f"mysql+pymysql://{user_enc}:{password_enc}@{host}:{port}/{dbname}?charset=utf8mb4"
 
 
 def _get_db_type():
@@ -88,6 +88,10 @@ def init_engine(
             pool_pre_ping=True,
             pool_recycle=pool_recycle,
             future=True,
+            connect_args={
+                # GSSAPI 인증 플러그인 우회 (mysql_native_password 사용)
+                "auth_plugin_map": {"auth_gssapi_client": None}
+            },
         )
         _session_factory = scoped_session(
             sessionmaker(bind=_engine, autoflush=False, autocommit=False, expire_on_commit=False)
