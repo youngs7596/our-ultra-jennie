@@ -20,6 +20,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(PROJECT_ROOT)
 
 from shared.config import get_global_config  # noqa: E402
+from shared.db.connection import ensure_engine_initialized  # noqa: E402
 from shared.strategy_presets import (  # noqa: E402
     CONFIG_KEY_MAP,
     apply_preset_to_config,
@@ -45,6 +46,11 @@ def main() -> None:
     env_path = os.path.join(PROJECT_ROOT, ".env")
     if os.path.exists(env_path):
         load_dotenv(env_path)
+
+    # DB 엔진 초기화 (CONFIG 테이블에 저장하기 위해 필요)
+    os.environ.setdefault("DB_TYPE", "MARIADB")
+    os.environ.setdefault("SECRETS_FILE", os.path.join(PROJECT_ROOT, "secrets.json"))
+    ensure_engine_initialized()
 
     preset_params = get_strategy_preset(args.preset)
     if not preset_params:
