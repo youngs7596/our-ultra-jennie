@@ -134,6 +134,46 @@ docker compose version
 4. 봇과 대화 시작 후 [@userinfobot](https://t.me/userinfobot)에서 Chat ID 확인
 5. Chat ID를 `telegram-chat-id`에 저장
 
+### 2.7 Cloudflare Tunnel (선택사항)
+
+> 외부에서 로컬 서비스(대시보드 등)에 안전하게 접근하기 위한 설정입니다.
+
+1. **Cloudflare 계정 생성**
+   - [Cloudflare](https://www.cloudflare.com/) 가입
+   - 도메인 추가 (기존 도메인 또는 새로 구매)
+
+2. **Zero Trust 설정**
+   - Cloudflare 대시보드 → Zero Trust 클릭
+   - Access → Tunnels 메뉴 이동
+
+3. **Tunnel 생성**
+   - "Create a tunnel" 클릭
+   - Tunnel 이름 입력 (예: `ultra-jennie-tunnel`)
+   - 환경 선택: Docker
+   - 토큰 복사하여 `secrets.json`의 `cloudflare-tunnel-token`에 저장
+
+4. **Public Hostname 설정**
+   - Tunnel 생성 후 "Public Hostnames" 탭
+   - Add a public hostname:
+     | Subdomain | Domain | Service |
+     |-----------|--------|---------|
+     | `jennie` | `yourdomain.com` | `http://localhost:80` |
+     | `api` | `yourdomain.com` | `http://localhost:8090` |
+
+5. **Docker Compose에서 실행**
+   ```bash
+   # docker-compose.yml에 cloudflared 서비스가 이미 포함되어 있음
+   docker compose up -d cloudflared
+   ```
+
+6. **접속 확인**
+   - 브라우저에서 `https://jennie.yourdomain.com` 접속
+   - 대시보드가 표시되면 성공
+
+**보안 팁**:
+- Zero Trust → Access → Applications에서 이메일 인증 추가 권장
+- 특정 이메일만 접근 허용 설정 가능
+
 ---
 
 ## 3. MariaDB 설치

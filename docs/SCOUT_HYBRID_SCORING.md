@@ -253,8 +253,8 @@ if news_category in ['수주', '배당']:
 ## 📚 참고 문서
 
 - [Fast Hands, Slow Brain 전략](./FAST_HANDS_SLOW_BRAIN_STRATEGY.md)
-- [로컬 테스트 가이드](./LOCAL_FAST_HANDS_TEST_GUIDE.md)
-- [Mock vs Real 모드 분석](./MOCK_VS_REAL_MODE_ANALYSIS.md)
+- [백테스트 가이드](./BACKTEST_GUIDE.md)
+- [스케줄러 아키텍처](./SCHEDULER_ARCHITECTURE.md)
 
 ---
 

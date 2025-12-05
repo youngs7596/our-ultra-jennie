@@ -659,7 +659,7 @@ async def get_news_sentiment_api(
     limit: int = Query(20, ge=1, le=100),
     payload: dict = Depends(verify_token)
 ):
-    """뉴스 감성 점수"""
+    """뉴스 감성 점수 (shared/database.py의 sentiment:{code} 키 사용)"""
     r = get_redis()
     if not r:
         return {"items": [], "message": "Redis 연결 실패"}
@@ -667,22 +667,35 @@ async def get_news_sentiment_api(
     try:
         if stock_code:
             # 특정 종목의 감성 점수
-            score = r.get(f"news:sentiment:{stock_code}")
+            data = r.get(f"sentiment:{stock_code}")
+            if data:
+                import json
+                parsed = json.loads(data)
+                return {
+                    "stock_code": stock_code,
+                    "sentiment_score": parsed.get("score"),
+                    "reason": parsed.get("reason"),
+                    "updated_at": parsed.get("updated_at"),
+                }
             return {
                 "stock_code": stock_code,
-                "sentiment_score": float(score) if score else None,
+                "sentiment_score": None,
             }
         else:
-            # 전체 감성 점수 (상위 N개)
-            keys = r.keys("news:sentiment:*")
+            # 전체 감성 점수 (상위 N개) - sentiment:* 키 조회
+            keys = r.keys("sentiment:*")
             items = []
+            import json
             for key in keys[:limit]:
-                code = key.split(":")[-1]
-                score = r.get(key)
-                items.append({
-                    "stock_code": code,
-                    "sentiment_score": float(score) if score else None,
-                })
+                code = key.split(":")[-1] if isinstance(key, str) else key.decode().split(":")[-1]
+                data = r.get(key)
+                if data:
+                    parsed = json.loads(data) if isinstance(data, str) else json.loads(data.decode())
+                    items.append({
+                        "stock_code": code,
+                        "sentiment_score": parsed.get("score"),
+                        "reason": parsed.get("reason"),
+                    })
             items.sort(key=lambda x: x["sentiment_score"] or 0, reverse=True)
             return {"items": items}
     except Exception as e:

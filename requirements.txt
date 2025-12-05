@@ -1,15 +1,12 @@
-# utilities/requirements.txt
+# requirements.txt
 # ============================================
-# Utilities & Scripts 실행을 위한 Python 의존성
+# Ultra Jennie - Python Dependencies
 # ============================================
-#
-# 이 파일은 utilities/ 및 scripts/ 폴더의 스크립트를
-# 로컬에서 실행하기 위한 의존성 목록입니다.
 #
 # 설치 방법:
 #   python -m venv .venv
 #   source .venv/bin/activate
-#   pip install -r utilities/requirements.txt
+#   pip install -r requirements.txt
 #
 # ============================================
 
@@ -17,8 +14,9 @@
 # Core Dependencies
 # -------------------------------------------
 
-# Flask (일부 유틸리티에서 사용)
+# Flask (API 서비스)
 flask>=3.0.0
+gunicorn>=21.0.0
 
 # 환경 변수 로딩
 python-dotenv>=1.0.0
@@ -114,15 +112,3 @@ pytz>=2024.1
 # 파일 락
 filelock>=3.14.0
 
-# -------------------------------------------
-# Development & Testing (선택사항)
-# -------------------------------------------
-
-# 타입 힌트 검사
-# mypy>=1.0.0
-
-# 코드 포매팅
-# black>=24.0.0
-
-# 린터
-# ruff>=0.1.0
