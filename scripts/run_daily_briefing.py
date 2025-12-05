@@ -50,27 +50,39 @@ def is_weekday():
 
 def get_portfolio_summary(connection) -> dict:
     """포트폴리오 요약 정보 조회"""
+    import pymysql
     try:
-        cursor = connection.cursor()
+        # DictCursor 사용
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
         
-        # 보유 종목 조회 (실제 스키마에 맞춤)
+        # 보유 종목 조회 (STOCK_MASTER와 JOIN)
         cursor.execute("""
             SELECT 
-                STOCK_CODE, STOCK_NAME, QUANTITY, AVERAGE_BUY_PRICE,
-                CURRENT_HIGH_PRICE, STATUS
-            FROM PORTFOLIO
-            WHERE QUANTITY > 0 AND STATUS = 'HOLDING'
-            ORDER BY QUANTITY DESC
+                p.STOCK_CODE, 
+                COALESCE(m.STOCK_NAME, p.STOCK_CODE) as STOCK_NAME,
+                p.QUANTITY, 
+                p.AVERAGE_BUY_PRICE,
+                p.CURRENT_HIGH_PRICE, 
+                p.STATUS
+            FROM PORTFOLIO p
+            LEFT JOIN STOCK_MASTER m ON p.STOCK_CODE = m.STOCK_CODE
+            WHERE p.QUANTITY > 0 AND p.STATUS = 'HOLDING'
+            ORDER BY p.QUANTITY DESC
         """)
         holdings = cursor.fetchall()
         
         # 오늘 거래 내역
         cursor.execute("""
             SELECT 
-                STOCK_CODE, STOCK_NAME, TRADE_TYPE, QUANTITY, PRICE, PROFIT_PCT
-            FROM TRADELOG
-            WHERE DATE(CREATED_AT) = CURDATE()
-            ORDER BY CREATED_AT DESC
+                t.STOCK_CODE, 
+                COALESCE(m.STOCK_NAME, t.STOCK_CODE) as STOCK_NAME,
+                t.TRADE_TYPE, 
+                t.QUANTITY, 
+                t.PRICE
+            FROM TRADELOG t
+            LEFT JOIN STOCK_MASTER m ON t.STOCK_CODE = m.STOCK_CODE
+            WHERE DATE(t.TRADE_TIMESTAMP) = CURDATE()
+            ORDER BY t.TRADE_TIMESTAMP DESC
             LIMIT 10
         """)
         today_trades = cursor.fetchall()
@@ -101,10 +113,12 @@ def get_portfolio_summary(connection) -> dict:
 
 def get_watchlist_summary(connection) -> dict:
     """워치리스트 요약 정보 조회"""
+    import pymysql
     try:
-        cursor = connection.cursor()
+        # DictCursor 사용
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
         
-        # 상위 종목 조회 (실제 스키마에 맞춤)
+        # 상위 종목 조회
         cursor.execute("""
             SELECT 
                 STOCK_CODE, STOCK_NAME, LLM_SCORE, IS_TRADABLE
@@ -117,7 +131,8 @@ def get_watchlist_summary(connection) -> dict:
         
         # 총 종목 수
         cursor.execute("SELECT COUNT(*) as cnt FROM WATCHLIST WHERE IS_TRADABLE = 1")
-        total_count = cursor.fetchone().get('cnt', 0)
+        result = cursor.fetchone()
+        total_count = result.get('cnt', 0) if result else 0
         
         return {
             "top_picks": top_picks,
