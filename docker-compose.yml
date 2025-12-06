@@ -625,13 +625,16 @@ services:
       dockerfile: services/dashboard-v2/backend/Dockerfile
     container_name: dashboard-v2-backend
     profiles: ["real"]
-    network_mode: host
+    ports:
+      - "8090:8090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - infrastructure/env-vars-wsl.yaml
     environment:
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-here}
-      - REDIS_URL=redis://127.0.0.1:6379/0
-      - KIS_GATEWAY_URL=http://127.0.0.1:8080
+      - REDIS_URL=redis://host.docker.internal:6379/0
+      - KIS_GATEWAY_URL=http://host.docker.internal:8080
       - SECRETS_FILE=/app/config/secrets.json
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
@@ -657,12 +660,15 @@ services:
         - VITE_API_URL=/api
     container_name: dashboard-v2-frontend
     profiles: ["real"]
-    network_mode: host
+    ports:
+      - "80:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       dashboard-v2-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      test: ["CMD", "sh", "-c", "pgrep nginx > /dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
