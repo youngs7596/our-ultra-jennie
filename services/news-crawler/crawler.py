@@ -223,24 +223,30 @@ def get_kospi_200_universe():
 def get_watchlist_from_db():
     """
     [v9.0] DB에서 WatchList를 조회합니다 (Fallback용).
+    MariaDB 사용 (pymysql 직접 연결).
     """
+    import pymysql
     db_conn = None
     try:
-        db_user = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_USER"), GCP_PROJECT_ID)
-        db_password = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"), GCP_PROJECT_ID)
+        # MariaDB 직접 연결
+        host = os.getenv("MARIADB_HOST", "host.docker.internal")
+        port = int(os.getenv("MARIADB_PORT", "3306"))
+        user = auth.get_secret("mariadb-user") or os.getenv("MARIADB_USER", "root")
+        password = auth.get_secret("mariadb-password") or os.getenv("MARIADB_PASSWORD", "")
+        dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
         
-        db_conn = database.get_db_connection(
-            db_user=db_user,
-            db_password=db_password,
-            db_service_name=DB_SERVICE_NAME,
-            wallet_path=WALLET_PATH
+        db_conn = pymysql.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=dbname,
+            charset='utf8mb4'
         )
-        if not db_conn:
-            logger.error("🔥 (1/6) DB 연결에 실패했습니다. (Skip)")
-            return []
+        logger.info(f"✅ (1/6) MariaDB 연결 성공! ({host}:{port}/{dbname})")
  
         cursor = db_conn.cursor()
-        sql = "SELECT stock_code, stock_name FROM WATCHLIST"
+        sql = "SELECT STOCK_CODE, STOCK_NAME FROM WATCHLIST"
         cursor.execute(sql)
         
         watchlist = []
@@ -358,19 +364,28 @@ def filter_new_documents(documents):
 def process_sentiment_analysis(documents):
     """
     [New] 수집된 뉴스 중 종목 뉴스에 대해 실시간 감성 분석을 수행합니다.
-    분석 결과는 Redis 및 Oracle DB에 저장됩니다.
+    분석 결과는 Redis 및 MariaDB에 저장됩니다.
     """
+    import pymysql
     if not jennie_brain or not documents:
         return
 
     logger.info(f"  [Sentiment] 신규 문서 {len(documents)}개에 대한 감성 분석 시작...")
     
-    # DB 연결 (저장용)
+    # MariaDB 연결 (저장용)
     db_conn = None
     try:
-        db_user = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_USER"), GCP_PROJECT_ID)
-        db_password = auth.get_secret(os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"), GCP_PROJECT_ID)
-        db_conn = database.get_db_connection(db_user, db_password, DB_SERVICE_NAME, WALLET_PATH)
+        host = os.getenv("MARIADB_HOST", "host.docker.internal")
+        port = int(os.getenv("MARIADB_PORT", "3306"))
+        user = auth.get_secret("mariadb-user") or os.getenv("MARIADB_USER", "root")
+        password = auth.get_secret("mariadb-password") or os.getenv("MARIADB_PASSWORD", "")
+        dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
+        
+        db_conn = pymysql.connect(
+            host=host, port=port, user=user, password=password,
+            database=dbname, charset='utf8mb4'
+        )
+        logger.info(f"✅ [Sentiment] MariaDB 연결 성공!")
     except Exception as e:
         logger.error(f"❌ [Sentiment] DB 연결 실패: {e}")
 
