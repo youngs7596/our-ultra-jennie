@@ -26,7 +26,7 @@ Scout v1.0 FactorAnalyzer - 오프라인 팩터 분석 배치 작업
 import logging
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 
@@ -37,6 +37,10 @@ from .schema import (
     is_oracle,
 )
 from shared.database import _is_mariadb
+
+# [v1.1] SQLAlchemy Repository 지원 (테스트 용이성)
+if TYPE_CHECKING:
+    from shared.db.factor_repository import FactorRepository
 
 logger = logging.getLogger(__name__)
 
@@ -139,23 +143,66 @@ class FactorAnalyzer:
         'SMALL': 0,                     # 그 외: 소형주
     }
     
-    def __init__(self, db_conn):
+    def __init__(self, db_conn=None, *, repository: "FactorRepository" = None):
         """
         초기화
         
+        [v1.1] 두 가지 모드 지원:
+        1. 레거시 모드: db_conn 직접 전달 (하위 호환성)
+        2. Repository 모드: FactorRepository 주입 (테스트 용이)
+        
         Args:
-            db_conn: DB 연결 객체
+            db_conn: DB 연결 객체 (레거시, deprecated)
+            repository: FactorRepository 인스턴스 (권장)
+        
+        Usage:
+            # 레거시 방식 (하위 호환성)
+            analyzer = FactorAnalyzer(db_conn)
+            
+            # 권장 방식 (테스트 용이)
+            from shared.db.factor_repository import FactorRepository
+            repo = FactorRepository(session)
+            analyzer = FactorAnalyzer(repository=repo)
         """
         self.db_conn = db_conn
+        self._repository = repository
         
-        # 테이블 생성 확인
-        create_hybrid_scoring_tables(db_conn)
+        # Repository 모드인 경우 db_conn 필요 없음
+        if repository is not None:
+            logger.info("   [FactorAnalyzer] Repository 모드로 초기화")
+        elif db_conn is not None:
+            # 레거시 모드: 테이블 생성 확인
+            create_hybrid_scoring_tables(db_conn)
+            logger.info("   [FactorAnalyzer] 레거시(db_conn) 모드로 초기화")
+        else:
+            logger.warning("⚠️ [FactorAnalyzer] DB 연결 없이 초기화됨 (분석 기능 제한)")
         
         # [v1.0.5] 시장 국면 캐시
         self._market_regime_cache = None
         self._stock_group_cache = {}
         
         logger.info("✅ FactorAnalyzer 초기화 완료")
+    
+    @property
+    def repository(self) -> Optional["FactorRepository"]:
+        """Repository 인스턴스 반환 (lazy initialization)"""
+        if self._repository is not None:
+            return self._repository
+        
+        # 레거시 모드에서 repository가 필요한 경우 자동 생성
+        if self.db_conn is not None:
+            try:
+                from shared.db.factor_repository import FactorRepository
+                from shared.db.connection import get_session
+                
+                session = get_session()
+                self._repository = FactorRepository(session)
+                logger.debug("   [FactorAnalyzer] Repository 자동 생성")
+                return self._repository
+            except Exception as e:
+                logger.warning(f"⚠️ [FactorAnalyzer] Repository 자동 생성 실패: {e}")
+        
+        return None
     
     def detect_market_regime(self, lookback_days: int = 120) -> str:
         """
@@ -216,6 +263,7 @@ class FactorAnalyzer:
     def classify_stock_group(self, stock_code: str) -> str:
         """
         [v1.0.5] 종목 그룹 분류 (시가총액 기준)
+        [v1.1] Repository 모드 지원
         
         Returns:
             'LARGE', 'MID', 'SMALL'
@@ -224,18 +272,24 @@ class FactorAnalyzer:
             return self._stock_group_cache[stock_code]
         
         try:
-            cursor = self.db_conn.cursor()
-            cursor.execute("""
-                SELECT MARKET_CAP FROM STOCK_MASTER WHERE STOCK_CODE = %s
-            """, (stock_code,))
+            # [v1.1] Repository 모드 우선
+            if self.repository is not None:
+                market_cap = self.repository.get_market_cap(stock_code)
+            else:
+                # 레거시 모드
+                cursor = self.db_conn.cursor()
+                cursor.execute("""
+                    SELECT MARKET_CAP FROM STOCK_MASTER WHERE STOCK_CODE = %s
+                """, (stock_code,))
+                
+                row = cursor.fetchone()
+                cursor.close()
+                
+                if not row:
+                    return 'SMALL'
+                
+                market_cap = row[0] if not isinstance(row, dict) else row.get('MARKET_CAP', 0)
             
-            row = cursor.fetchone()
-            cursor.close()
-            
-            if not row:
-                return 'SMALL'
-            
-            market_cap = row[0] if not isinstance(row, dict) else row.get('MARKET_CAP', 0)
             if market_cap is None:
                 market_cap = 0
             
@@ -269,6 +323,7 @@ class FactorAnalyzer:
     def get_stock_sector(self, stock_code: str) -> str:
         """
         [v1.0.6 Phase B] 종목의 섹터 분류
+        [v1.1] Repository 모드 지원
         
         STOCK_MASTER의 SECTOR_KOSPI200 또는 INDUSTRY_CODE 기반
         """
@@ -288,21 +343,30 @@ class FactorAnalyzer:
         
         # DB에서 조회
         try:
-            cursor = self.db_conn.cursor()
-            cursor.execute("""
-                SELECT SECTOR_KOSPI200, INDUSTRY_CODE 
-                FROM STOCK_MASTER 
-                WHERE STOCK_CODE = %s
-            """, (stock_code,))
+            # [v1.1] Repository 모드 우선
+            if self.repository is not None:
+                sector_kospi, industry_code = self.repository.get_stock_sector(stock_code)
+                sector = sector_kospi or industry_code
+            else:
+                # 레거시 모드
+                cursor = self.db_conn.cursor()
+                cursor.execute("""
+                    SELECT SECTOR_KOSPI200, INDUSTRY_CODE 
+                    FROM STOCK_MASTER 
+                    WHERE STOCK_CODE = %s
+                """, (stock_code,))
+                
+                row = cursor.fetchone()
+                cursor.close()
+                
+                if row:
+                    sector = row[0] if not isinstance(row, dict) else row.get('SECTOR_KOSPI200')
+                else:
+                    sector = None
             
-            row = cursor.fetchone()
-            cursor.close()
-            
-            if row:
-                sector = row[0] if not isinstance(row, dict) else row.get('SECTOR_KOSPI200')
-                if sector:
-                    self._sector_cache[cache_key] = sector
-                    return sector
+            if sector:
+                self._sector_cache[cache_key] = sector
+                return sector
             
             self._sector_cache[cache_key] = '기타'
             return '기타'
@@ -371,6 +435,8 @@ class FactorAnalyzer:
         """
         종목별 과거 가격 데이터 조회
         
+        [v1.1] Repository 모드 지원 (SQLAlchemy ORM)
+        
         Args:
             stock_codes: 종목 코드 리스트
             days: 조회 일수 (기본 504일 ≈ 2년)
@@ -378,6 +444,11 @@ class FactorAnalyzer:
         Returns:
             {stock_code: DataFrame} 딕셔너리
         """
+        # [v1.1] Repository 모드 우선
+        if self.repository is not None:
+            return self.repository.get_historical_prices_bulk(stock_codes, days)
+        
+        # 레거시 모드 (raw SQL)
         result = {}
         
         try:

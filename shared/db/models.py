@@ -389,3 +389,258 @@ class CompetitorBenefitEvents(Base):
     detected_at = Column("DETECTED_AT", DateTime, server_default=func.now())
     created_at = Column("CREATED_AT", DateTime, server_default=func.now())
     updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+# =============================================================================
+# [v4.1] Hybrid Scoring 모듈용 ORM 모델 (factor_analyzer.py 리팩토링)
+# =============================================================================
+
+class StockMaster(Base):
+    """
+    종목 마스터 테이블
+    - 종목 기본 정보 (시가총액, 섹터 등)
+    """
+    __tablename__ = "STOCK_MASTER"
+    __table_args__ = {"extend_existing": True}
+
+    stock_code = Column("STOCK_CODE", String(20), primary_key=True)
+    stock_name = Column("STOCK_NAME", String(120), nullable=True)
+    market_cap = Column("MARKET_CAP", Numeric(20, 0), nullable=True)
+    sector_kospi200 = Column("SECTOR_KOSPI200", String(50), nullable=True)
+    industry_code = Column("INDUSTRY_CODE", String(20), nullable=True)
+    industry_name = Column("INDUSTRY_NAME", String(100), nullable=True)
+    is_kospi200 = Column("IS_KOSPI200", Integer, default=0)
+    is_active = Column("IS_ACTIVE", Integer, default=1)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class FinancialMetricsQuarterly(Base):
+    """
+    분기별 재무 지표 테이블
+    - PER, PBR, ROE 등 재무 데이터
+    """
+    __tablename__ = "FINANCIAL_METRICS_QUARTERLY"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    quarter_date = Column("QUARTER_DATE", Date, nullable=False)
+    per = Column("PER", Float, nullable=True)
+    pbr = Column("PBR", Float, nullable=True)
+    roe = Column("ROE", Float, nullable=True)
+    eps = Column("EPS", Float, nullable=True)
+    bps = Column("BPS", Float, nullable=True)
+    sales_growth = Column("SALES_GROWTH", Float, nullable=True)
+    operating_margin = Column("OPERATING_MARGIN", Float, nullable=True)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class StockInvestorTrading(Base):
+    """
+    투자자별 매매 동향 테이블
+    - 외국인/기관 순매수 정보
+    """
+    __tablename__ = "STOCK_INVESTOR_TRADING"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    trade_date = Column("TRADE_DATE", Date, nullable=False)
+    foreign_net_buy = Column("FOREIGN_NET_BUY", Numeric(20, 0), nullable=True)  # 외국인 순매수 금액
+    institution_net_buy = Column("INSTITUTION_NET_BUY", Numeric(20, 0), nullable=True)  # 기관 순매수 금액
+    individual_net_buy = Column("INDIVIDUAL_NET_BUY", Numeric(20, 0), nullable=True)  # 개인 순매수 금액
+    foreign_holding_ratio = Column("FOREIGN_HOLDING_RATIO", Float, nullable=True)  # 외국인 보유 비율
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+class StockNewsSentiment(Base):
+    """
+    종목별 뉴스 감성 점수 테이블
+    - 뉴스 카테고리별 감성 점수
+    """
+    __tablename__ = "STOCK_NEWS_SENTIMENT"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    news_date = Column("NEWS_DATE", Date, nullable=False)
+    sentiment_score = Column("SENTIMENT_SCORE", Float, nullable=True)  # -100 ~ +100
+    category = Column("CATEGORY", String(50), nullable=True)  # 실적, 수주, 규제 등
+    news_count = Column("NEWS_COUNT", Integer, default=1)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+class StockDisclosures(Base):
+    """
+    종목별 공시 정보 테이블
+    """
+    __tablename__ = "STOCK_DISCLOSURES"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    disclosure_date = Column("DISCLOSURE_DATE", Date, nullable=False)
+    category = Column("CATEGORY", String(50), nullable=True)
+    title = Column("TITLE", String(500), nullable=True)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+class FactorMetadata(Base):
+    """
+    팩터별 예측력 메타데이터 테이블
+    - IC, IR, 가중치 등
+    - 주 1회 배치 작업으로 업데이트
+    """
+    __tablename__ = "FACTOR_METADATA"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    factor_key = Column("FACTOR_KEY", String(50), nullable=False)
+    factor_name = Column("FACTOR_NAME", String(100), nullable=True)
+    market_regime = Column("MARKET_REGIME", String(20), default='ALL')
+    
+    # 예측력 지표
+    ic_mean = Column("IC_MEAN", Float, nullable=True)  # Information Coefficient 평균
+    ic_std = Column("IC_STD", Float, nullable=True)  # IC 표준편차
+    ir = Column("IR", Float, nullable=True)  # Information Ratio
+    hit_rate = Column("HIT_RATE", Float, nullable=True)  # 적중률
+    
+    # 추천 가중치
+    recommended_weight = Column("RECOMMENDED_WEIGHT", Float, default=0.10)
+    
+    # 표본 정보
+    sample_count = Column("SAMPLE_COUNT", Integer, default=0)
+    analysis_start_date = Column("ANALYSIS_START_DATE", Date, nullable=True)
+    analysis_end_date = Column("ANALYSIS_END_DATE", Date, nullable=True)
+    
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class FactorPerformance(Base):
+    """
+    종목/섹터별 조건부 승률 통계 테이블
+    - "삼성전자 + 외국인 순매수 + 뉴스점수 70↑" → 승률 80%
+    """
+    __tablename__ = "FACTOR_PERFORMANCE"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    
+    # 대상 식별
+    target_type = Column("TARGET_TYPE", String(20), nullable=False)  # STOCK, SECTOR, ALL
+    target_code = Column("TARGET_CODE", String(20), nullable=False)
+    target_name = Column("TARGET_NAME", String(100), nullable=True)
+    
+    # 조건 정의
+    condition_key = Column("CONDITION_KEY", String(100), nullable=False)
+    condition_desc = Column("CONDITION_DESC", String(200), nullable=True)
+    
+    # 성과 통계
+    win_rate = Column("WIN_RATE", Float, nullable=True)
+    avg_return = Column("AVG_RETURN", Float, nullable=True)
+    median_return = Column("MEDIAN_RETURN", Float, nullable=True)
+    max_return = Column("MAX_RETURN", Float, nullable=True)
+    min_return = Column("MIN_RETURN", Float, nullable=True)
+    
+    # 측정 기간
+    holding_days = Column("HOLDING_DAYS", Integer, default=5)
+    
+    # 신뢰도
+    sample_count = Column("SAMPLE_COUNT", Integer, default=0)
+    confidence_level = Column("CONFIDENCE_LEVEL", String(10), default='LOW')
+    
+    # 최근성 가중치
+    recent_win_rate = Column("RECENT_WIN_RATE", Float, nullable=True)
+    recent_sample_count = Column("RECENT_SAMPLE_COUNT", Integer, nullable=True)
+    
+    analysis_date = Column("ANALYSIS_DATE", Date, nullable=True)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class NewsFactorStats(Base):
+    """
+    뉴스 카테고리별 영향도 통계 테이블
+    - "수주 뉴스 발생 시 평균 +3.2%, 승률 78%"
+    """
+    __tablename__ = "NEWS_FACTOR_STATS"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    
+    # 대상 식별
+    target_type = Column("TARGET_TYPE", String(20), nullable=False)  # STOCK, SECTOR, ALL
+    target_code = Column("TARGET_CODE", String(20), nullable=False)
+    
+    # 뉴스 카테고리
+    news_category = Column("NEWS_CATEGORY", String(50), nullable=False)
+    sentiment = Column("SENTIMENT", String(10), default='POSITIVE')
+    
+    # 성과 통계
+    win_rate = Column("WIN_RATE", Float, nullable=True)
+    avg_excess_return = Column("AVG_EXCESS_RETURN", Float, nullable=True)
+    avg_absolute_return = Column("AVG_ABSOLUTE_RETURN", Float, nullable=True)
+    
+    # 측정 기간별 통계
+    return_d1 = Column("RETURN_D1", Float, nullable=True)
+    return_d5 = Column("RETURN_D5", Float, nullable=True)
+    return_d20 = Column("RETURN_D20", Float, nullable=True)
+    
+    win_rate_d1 = Column("WIN_RATE_D1", Float, nullable=True)
+    win_rate_d5 = Column("WIN_RATE_D5", Float, nullable=True)
+    win_rate_d20 = Column("WIN_RATE_D20", Float, nullable=True)
+    
+    # 신뢰도
+    sample_count = Column("SAMPLE_COUNT", Integer, default=0)
+    confidence_level = Column("CONFIDENCE_LEVEL", String(10), default='LOW')
+    
+    analysis_date = Column("ANALYSIS_DATE", Date, nullable=True)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+    updated_at = Column("UPDATED_AT", DateTime, onupdate=func.now())
+
+
+class DailyQuantScore(Base):
+    """
+    일별 정량 점수 기록 테이블 (역추적/백테스트용)
+    - Scout가 왜 이 종목을 뽑았는지 추적 가능
+    """
+    __tablename__ = "DAILY_QUANT_SCORE"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column("ID", Integer, primary_key=True)
+    
+    score_date = Column("SCORE_DATE", Date, nullable=False)
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    stock_name = Column("STOCK_NAME", String(100), nullable=True)
+    
+    # 정량 점수 (100점 만점)
+    total_quant_score = Column("TOTAL_QUANT_SCORE", Float, nullable=True)
+    
+    # 팩터별 점수
+    momentum_score = Column("MOMENTUM_SCORE", Float, nullable=True)
+    quality_score = Column("QUALITY_SCORE", Float, nullable=True)
+    value_score = Column("VALUE_SCORE", Float, nullable=True)
+    technical_score = Column("TECHNICAL_SCORE", Float, nullable=True)
+    news_stat_score = Column("NEWS_STAT_SCORE", Float, nullable=True)
+    supply_demand_score = Column("SUPPLY_DEMAND_SCORE", Float, nullable=True)
+    
+    # 조건부 승률 정보
+    matched_condition = Column("MATCHED_CONDITION", String(200), nullable=True)
+    condition_win_rate = Column("CONDITION_WIN_RATE", Float, nullable=True)
+    condition_sample_count = Column("CONDITION_SAMPLE_COUNT", Integer, nullable=True)
+    
+    # 필터링 결과
+    is_passed_filter = Column("IS_PASSED_FILTER", Integer, default=0)
+    filter_rank = Column("FILTER_RANK", Integer, nullable=True)
+    
+    # LLM 분석 결과
+    llm_score = Column("LLM_SCORE", Float, nullable=True)
+    hybrid_score = Column("HYBRID_SCORE", Float, nullable=True)
+    is_final_selected = Column("IS_FINAL_SELECTED", Integer, default=0)
+    
+    # 메타 정보
+    market_regime = Column("MARKET_REGIME", String(20), nullable=True)
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
