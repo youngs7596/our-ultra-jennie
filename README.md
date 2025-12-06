@@ -216,9 +216,11 @@ report = analyzer.analyze('035420')  # NAVER
 
 ### 사전 요구사항
 
-- Docker & Docker Compose
-- MariaDB (WSL2 또는 별도 서버)
+- Docker & Docker Compose (또는 Docker Desktop for Windows)
+- MariaDB (WSL2 또는 Windows에 설치)
 - Python 3.11+
+
+> ⚠️ **Docker Desktop for Windows 사용 시**: `secrets.json`과 `env-vars-wsl.yaml`에서 `mariadb-host`를 `host.docker.internal`로 설정해야 합니다.
 
 ### 1. 환경 설정
 
@@ -251,7 +253,7 @@ cp secrets.example.json secrets.json
   "cloudflare-tunnel-token": "your-cloudflare-token",
   "mariadb-user": "root",
   "mariadb-password": "your-db-password",
-  "mariadb-host": "127.0.0.1",
+  "mariadb-host": "host.docker.internal",
   "mariadb-database": "jennie_db"
 }
 ```
