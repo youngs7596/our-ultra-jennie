@@ -12,6 +12,12 @@ services:
       - "5672:5672"
       - "15672:15672"
     restart: always
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - msa-network
 
@@ -26,6 +32,12 @@ services:
     volumes:
       - ./chroma_data:/chroma/chroma
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - msa-network
 
@@ -37,6 +49,12 @@ services:
     volumes:
       - ./redis_data:/data
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - msa-network
 
@@ -112,6 +130,10 @@ services:
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
       - ./scheduler_data:/app/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
 
   scheduler-service-mock:
     build:
@@ -220,8 +242,11 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -247,7 +272,7 @@ services:
       kis-gateway-mock:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
 
   # ============================================================================
   # 4. Buy Executor (매수 실행)
@@ -268,8 +293,11 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -295,7 +323,7 @@ services:
       kis-gateway-mock:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
 
   # ============================================================================
   # 5. Sell Executor (매도 실행)
@@ -316,8 +344,11 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8083/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -343,7 +374,7 @@ services:
       kis-gateway-mock:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
   # ============================================================================
   # 6. Price Monitor (가격 모니터링)
   # ============================================================================
@@ -365,8 +396,13 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -395,9 +431,9 @@ services:
       kis-gateway-mock:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
 
   # ============================================================================
   # 7. Daily Briefing (일일 브리핑)
@@ -419,7 +455,7 @@ services:
     network_mode: host
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8086/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -463,8 +499,15 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8087/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8087/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -490,6 +533,12 @@ services:
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
 
   # ============================================================================
   # 9. News Crawler (뉴스 수집)
@@ -510,8 +559,13 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8089/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8089/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -537,6 +591,10 @@ services:
     depends_on:
       kis-gateway-mock:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
 
   # ============================================================================
   # 10. Dashboard V2 (React + FastAPI)
@@ -560,11 +618,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
