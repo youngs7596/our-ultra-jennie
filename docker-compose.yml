@@ -668,16 +668,14 @@ services:
       retries: 3
 
   # Cloudflare Tunnel - 외부 접근을 위한 보안 터널
+  # secrets.json의 cloudflare-tunnel-token 사용
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    build:
+      context: ./infrastructure/cloudflared
+      dockerfile: Dockerfile
     container_name: cloudflared
     profiles: ["real"]
     network_mode: host
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        TOKEN=$$(cat /config/secrets.json | grep cloudflare-tunnel-token | cut -d'"' -f4)
-        exec cloudflared tunnel --no-autoupdate run --token $$TOKEN
     volumes:
       - ./secrets.json:/config/secrets.json:ro
     depends_on:
