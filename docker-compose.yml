@@ -766,10 +766,13 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # CI - Jenkins (Dockerized)
+  # CI - Jenkins (Dockerized) - Docker CLI 포함
   # ============================================================================
   jenkins:
-    image: jenkins/jenkins:lts
+    build:
+      context: ./docker/jenkins
+      dockerfile: Dockerfile
+    image: my-jenkins:latest
     container_name: jenkins
     profiles: ["ci"]
     user: "0"               # root로 실행해 docker.sock 접근 허용
