@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         DOCKER_COMPOSE_FILE = 'docker-compose.yml'
+        COMPOSE_PROJECT_NAME = 'my-ultra-jennie'
     }
 
     stages {
@@ -49,7 +50,7 @@ pipeline {
             steps {
                 echo '🐳 Building Docker images...'
                 sh '''
-                    docker-compose -f ${DOCKER_COMPOSE_FILE} build --no-cache
+                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} build --no-cache
                 '''
             }
         }
@@ -65,13 +66,13 @@ pipeline {
                 echo '🚀 Deploying to production...'
                 sh '''
                     # 기존 컨테이너 중지 및 제거
-                    docker-compose -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
+                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
                     
                     # 새 컨테이너 시작
-                    docker-compose -f ${DOCKER_COMPOSE_FILE} up -d
+                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} up -d
                     
                     # 상태 확인
-                    docker-compose -f ${DOCKER_COMPOSE_FILE} ps
+                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} ps
                 '''
             }
         }
