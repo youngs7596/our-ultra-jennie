@@ -784,6 +784,8 @@ services:
       - ./jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/youngs75/projects/my-ultra-jennie:/home/youngs75/projects/my-ultra-jennie
+      - /home/youngs75/.gitconfig:/root/.gitconfig:ro
+      - /home/youngs75/.config/gh:/root/.config/gh:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/login || exit 1"]
