@@ -65,6 +65,8 @@ pipeline {
             steps {
                 echo '🚀 Deploying to production...'
                 sh '''
+                    git config --global --add safe.directory "*" 
+                    
                     # 배포용 프로젝트 경로로 이동 (main 브랜치 전용)
                     cd /home/youngs75/projects/my-ultra-jennie-main
                     
