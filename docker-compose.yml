@@ -280,6 +280,12 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
       interval: 30s
@@ -306,6 +312,12 @@ services:
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
 
   # ============================================================================
   # 4. Buy Executor (매수 실행)
@@ -328,6 +340,12 @@ services:
     restart: unless-stopped
     depends_on:
       scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')"]
@@ -355,6 +373,12 @@ services:
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
 
   # ============================================================================
   # 5. Sell Executor (매도 실행)
@@ -377,6 +401,12 @@ services:
     restart: unless-stopped
     depends_on:
       scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8083/health')"]
@@ -404,6 +434,12 @@ services:
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
   # ============================================================================
   # 6. Price Monitor (가격 모니터링)
   # ============================================================================
@@ -427,6 +463,12 @@ services:
     restart: unless-stopped
     depends_on:
       scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"]
@@ -457,6 +499,12 @@ services:
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
 
   # ============================================================================
   # 7. Daily Briefing (일일 브리핑)
@@ -479,6 +527,12 @@ services:
     restart: unless-stopped
     depends_on:
       scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8086/health')"]
@@ -505,6 +559,12 @@ services:
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
 
   # ============================================================================
   # 8. Scout Job (종목 발굴)
@@ -527,6 +587,12 @@ services:
     restart: unless-stopped
     depends_on:
       scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8087/health')"]
@@ -555,6 +621,12 @@ services:
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
 
   # ============================================================================
   # 9. News Crawler (뉴스 수집)
@@ -577,6 +649,12 @@ services:
     restart: unless-stopped
     depends_on:
       scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8089/health')"]
@@ -604,6 +682,12 @@ services:
     network_mode: host
     depends_on:
       scheduler-service-mock:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
 
   # ============================================================================
@@ -680,6 +764,31 @@ services:
       dashboard-v2-frontend:
         condition: service_healthy
     restart: unless-stopped
+
+  # ============================================================================
+  # CI - Jenkins (Dockerized)
+  # ============================================================================
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    profiles: ["ci"]
+    user: "0"               # root로 실행해 docker.sock 접근 허용
+    environment:
+      - TZ=Asia/Seoul
+    ports:
+      - "8180:8080"         # 호스트 8180 → Jenkins 8080
+    volumes:
+      - ./jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/login || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - msa-network
 
 networks:
   msa-network:
