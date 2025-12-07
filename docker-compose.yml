@@ -4,7 +4,6 @@ services:
   # ============================================================================
   rabbitmq:
     image: rabbitmq:3.13-management
-    container_name: rabbitmq
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
@@ -13,33 +12,38 @@ services:
       - "15672:15672"
     restart: always
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 10
       start_period: 15s
     networks:
       - msa-network
+    labels:
+      - app=rabbitmq
+      - stack=my-ultra-jennie
 
   # ============================================================================
   # 0. Infrastructure Dependencies (ChromaDB & Redis)
   # ============================================================================
   chromadb:
     image: chromadb/chroma
-    container_name: chromadb
     ports:
       - "8000:8000"
     volumes:
       - ./chroma_data:/chroma/chroma
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8000'"]
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8000'" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     networks:
       - msa-network
+    labels:
+      - app=chromadb
+      - stack=my-ultra-jennie
 
   redis:
     image: redis:alpine
@@ -52,7 +56,7 @@ services:
       - ./redis_data:/data
     restart: always
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -76,7 +80,7 @@ services:
       - ./observability/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
       - ./observability/loki/data:/tmp/loki
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -126,15 +130,14 @@ services:
       - app=grafana
       - stack=my-ultra-jennie
 
-# ============================================================================
-# 0-bis. Scheduler Service
-# ============================================================================
+  # ============================================================================
+  # 0-bis. Scheduler Service
+  # ============================================================================
   scheduler-service:
     build:
       context: .
       dockerfile: services/scheduler-service/Dockerfile
-    container_name: scheduler-service
-    profiles: ["real"]
+    profiles: [ "real" ]
     network_mode: host
     env_file:
       - infrastructure/env-vars-wsl.yaml
@@ -144,6 +147,9 @@ services:
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
       - ./scheduler_data:/app/data
+    labels:
+      - app=scheduler-service
+      - stack=my-ultra-jennie
     depends_on:
       kis-gateway:
         condition: service_healthy
@@ -155,7 +161,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8095/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8095/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -165,8 +171,7 @@ services:
     build:
       context: .
       dockerfile: services/scheduler-service/Dockerfile
-    container_name: scheduler-service-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     environment:
@@ -174,6 +179,9 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     volumes:
       - ./scheduler_data:/app/data
+    labels:
+      - app=scheduler-service-mock
+      - stack=my-ultra-jennie
     network_mode: host
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -187,12 +195,12 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9095/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9095/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9095"]
+    command: [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9095" ]
 
   # ============================================================================
   # 1. KIS Mock Server (간단한 HTTP REST API 버전)
@@ -202,10 +210,12 @@ services:
     build:
       context: .
       dockerfile: docker/kis-mock/Dockerfile
-    container_name: kis-mock
     environment:
       - PORT=9443
     network_mode: host
+    labels:
+      - app=kis-mock
+      - stack=my-ultra-jennie
     healthcheck:
       test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:9443/health').raise_for_status()" ]
       interval: 5s
@@ -220,8 +230,7 @@ services:
     build:
       context: .
       dockerfile: services/kis-gateway/Dockerfile
-    container_name: kis-gateway
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -233,6 +242,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 MariaDB/Redis 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=kis-gateway
+      - stack=my-ultra-jennie
     healthcheck:
       test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health').raise_for_status()" ]
       interval: 10s
@@ -244,8 +256,7 @@ services:
     build:
       context: .
       dockerfile: services/kis-gateway/Dockerfile
-    container_name: kis-gateway-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -256,10 +267,13 @@ services:
       - GUNICORN_CMD_ARGS=--timeout 600
       - KIS_BASE_URL_MOCK=http://localhost:9443
     network_mode: host
+    labels:
+      - app=kis-gateway-mock
+      - stack=my-ultra-jennie
     depends_on:
       kis-mock:
         condition: service_healthy
-    command: ["gunicorn", "--bind", "0.0.0.0:9080", "--workers", "1", "--threads", "1", "--timeout", "600", "--chdir", "/app/kis-gateway", "main:app"]
+    command: [ "gunicorn", "--bind", "0.0.0.0:9080", "--workers", "1", "--threads", "1", "--timeout", "600", "--chdir", "/app/kis-gateway", "main:app" ]
     healthcheck:
       test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:9080/health').raise_for_status()" ]
       interval: 10s
@@ -273,8 +287,7 @@ services:
     build:
       context: .
       dockerfile: services/buy-scanner/Dockerfile
-    container_name: buy-scanner
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -285,6 +298,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=buy-scanner
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service:
         condition: service_healthy
@@ -295,7 +311,7 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -305,8 +321,7 @@ services:
     build:
       context: .
       dockerfile: services/buy-scanner/Dockerfile
-    container_name: buy-scanner-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -317,6 +332,9 @@ services:
       - KIS_GATEWAY_URL=http://localhost:9080
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
+    labels:
+      - app=buy-scanner-mock
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
@@ -334,8 +352,7 @@ services:
     build:
       context: .
       dockerfile: services/buy-executor/Dockerfile
-    container_name: buy-executor
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -346,6 +363,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=buy-executor
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service:
         condition: service_healthy
@@ -356,7 +376,7 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -366,8 +386,7 @@ services:
     build:
       context: .
       dockerfile: services/buy-executor/Dockerfile
-    container_name: buy-executor-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -378,6 +397,9 @@ services:
       - KIS_GATEWAY_URL=http://localhost:9080
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
+    labels:
+      - app=buy-executor-mock
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
@@ -395,8 +417,7 @@ services:
     build:
       context: .
       dockerfile: services/sell-executor/Dockerfile
-    container_name: sell-executor
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -407,6 +428,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=sell-executor
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service:
         condition: service_healthy
@@ -417,7 +441,7 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8083/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8083/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -427,8 +451,7 @@ services:
     build:
       context: .
       dockerfile: services/sell-executor/Dockerfile
-    container_name: sell-executor-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -439,6 +462,9 @@ services:
       - KIS_GATEWAY_URL=http://localhost:9080
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
+    labels:
+      - app=sell-executor-mock
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
@@ -455,8 +481,7 @@ services:
     build:
       context: .
       dockerfile: services/price-monitor/Dockerfile
-    container_name: price-monitor
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -469,6 +494,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=price-monitor
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service:
         condition: service_healthy
@@ -479,7 +507,7 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -489,8 +517,7 @@ services:
     build:
       context: .
       dockerfile: services/price-monitor/Dockerfile
-    container_name: price-monitor-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -504,6 +531,9 @@ services:
       - REDIS_URL=redis://localhost:6379
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
+    labels:
+      - app=price-monitor-mock
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
@@ -521,8 +551,7 @@ services:
     build:
       context: .
       dockerfile: services/daily-briefing/Dockerfile
-    container_name: daily-briefing
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -533,6 +562,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=daily-briefing
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service:
         condition: service_healthy
@@ -543,7 +575,7 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8086/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8086/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -553,8 +585,7 @@ services:
     build:
       context: .
       dockerfile: services/daily-briefing/Dockerfile
-    container_name: daily-briefing-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -564,6 +595,9 @@ services:
       - SECRETS_FILE=/app/config/secrets.json
       - KIS_GATEWAY_URL=http://localhost:9080
     network_mode: host
+    labels:
+      - app=daily-briefing-mock
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
@@ -581,8 +615,7 @@ services:
     build:
       context: .
       dockerfile: services/scout-job/Dockerfile
-    container_name: scout-job
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -593,6 +626,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=scout-job
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service:
         condition: service_healthy
@@ -603,7 +639,7 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8087/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8087/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -613,8 +649,7 @@ services:
     build:
       context: .
       dockerfile: services/scout-job/Dockerfile
-    container_name: scout-job-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -626,6 +661,9 @@ services:
       - CHROMA_SERVER_HOST=localhost
       - REDIS_URL=redis://localhost:6379
     network_mode: host
+    labels:
+      - app=scout-job-mock
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
@@ -643,8 +681,7 @@ services:
     build:
       context: .
       dockerfile: services/news-crawler/Dockerfile
-    container_name: news-crawler
-    profiles: ["real"]
+    profiles: [ "real" ]
     env_file:
       - infrastructure/env-vars-wsl.yaml
     volumes:
@@ -655,6 +692,9 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    labels:
+      - app=news-crawler
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service:
         condition: service_healthy
@@ -665,7 +705,7 @@ services:
       chromadb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8089/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8089/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -675,8 +715,7 @@ services:
     build:
       context: .
       dockerfile: services/news-crawler/Dockerfile
-    container_name: news-crawler-mock
-    profiles: ["mock"]
+    profiles: [ "mock" ]
     env_file:
       - infrastructure/env-vars-mock.yaml
     volumes:
@@ -688,6 +727,9 @@ services:
       - CHROMA_SERVER_HOST=localhost
       - REDIS_URL=redis://localhost:6379
     network_mode: host
+    labels:
+      - app=news-crawler-mock
+      - stack=my-ultra-jennie
     depends_on:
       scheduler-service-mock:
         condition: service_healthy
@@ -705,8 +747,7 @@ services:
     build:
       context: .
       dockerfile: services/dashboard-v2/backend/Dockerfile
-    container_name: dashboard-v2-backend
-    profiles: ["real"]
+    profiles: [ "real" ]
     ports:
       - "8090:8090"
     extra_hosts:
@@ -725,13 +766,16 @@ services:
       scheduler-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: always
     networks:
       - msa-network
+    labels:
+      - app=dashboard-v2-backend
+      - stack=my-ultra-jennie
 
   dashboard-v2-frontend:
     build:
@@ -739,8 +783,8 @@ services:
       dockerfile: Dockerfile
       args:
         - VITE_API_URL=/api
-    container_name: dashboard-v2-frontend
-    profiles: ["real"]
+        - VITE_API_URL=/api
+    profiles: [ "real" ]
     ports:
       - "80:80"
     extra_hosts:
@@ -749,13 +793,16 @@ services:
       dashboard-v2-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "sh", "-c", "pgrep nginx > /dev/null"]
+      test: [ "CMD", "sh", "-c", "pgrep nginx > /dev/null" ]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: always
     networks:
       - msa-network
+    labels:
+      - app=dashboard-v2-frontend
+      - stack=my-ultra-jennie
 
   # Cloudflare Tunnel - 외부 접근을 위한 보안 터널
   # secrets.json의 cloudflare-tunnel-token 사용
@@ -763,8 +810,7 @@ services:
     build:
       context: ./infrastructure/cloudflared
       dockerfile: Dockerfile
-    container_name: cloudflared
-    profiles: ["real"]
+    profiles: [ "real" ]
     network_mode: host
     volumes:
       - ./secrets.json:/config/secrets.json:ro
@@ -772,6 +818,9 @@ services:
       dashboard-v2-frontend:
         condition: service_healthy
     restart: unless-stopped
+    labels:
+      - app=cloudflared
+      - stack=my-ultra-jennie
 
   # ============================================================================
   # CI - Jenkins (Dockerized) - Docker CLI 포함
@@ -781,20 +830,22 @@ services:
       context: ./docker/jenkins
       dockerfile: Dockerfile
     image: my-jenkins:latest
-    container_name: jenkins
-    profiles: ["ci"]
-    user: "0"               # root로 실행해 docker.sock 접근 허용
+    profiles: [ "ci" ]
+    user: "0" # root로 실행해 docker.sock 접근 허용
     environment:
       - TZ=Asia/Seoul
     ports:
-      - "8180:8080"         # 호스트 8180 → Jenkins 8080
+      - "8180:8080" # 호스트 8180 → Jenkins 8080
     volumes:
       - ./jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/youngs75/projects/my-ultra-jennie-main:/home/youngs75/projects/my-ultra-jennie-main
     restart: unless-stopped
+    labels:
+      - app=jenkins
+      - stack=my-ultra-jennie
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/login || exit 1"]
+      test: [ "CMD-SHELL", "wget --spider -q http://localhost:8080/login || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 5
