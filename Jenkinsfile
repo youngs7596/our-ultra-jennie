@@ -64,24 +64,25 @@ pipeline {
             }
             steps {
                 echo '🚀 Deploying to production...'
-                sh '''
-                    git config --global --add safe.directory "*" 
-                    
-                    # 배포용 프로젝트 경로로 이동 (main 브랜치 전용)
-                    cd /home/youngs75/projects/my-ultra-jennie-main
-                    
-                    # 최신 코드 가져오기
-                    git pull origin main
-                    
-                    # 기존 컨테이너 중지 및 제거
-                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
-                    
-                    # 새 컨테이너 시작
-                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} up -d
-                    
-                    # 상태 확인
-                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} ps
-                '''
+
+                withCredentials([usernamePassword(credentialsId: 'github-token', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+                    sh '''
+                        git config --global --add safe.directory "*" 
+                        
+                        cd /home/youngs75/projects/my-ultra-jennie-main
+
+                        git pull https://${GIT_USER}:${GIT_PASS}@github.com/youngs7596/my-ultra-jennie.git
+                        
+                        # 기존 컨테이너 중지 및 제거
+                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
+                        
+                        # 새 컨테이너 시작
+                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} up -d
+                        
+                        # 상태 확인
+                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} ps
+                    '''
+                }
             }
         }
     }
