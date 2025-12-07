@@ -43,7 +43,9 @@ services:
 
   redis:
     image: redis:alpine
-    container_name: redis
+    labels:
+      - app=redis
+      - stack=my-ultra-jennie
     ports:
       - "6379:6379"
     volumes:
@@ -63,7 +65,6 @@ services:
   # ============================================================================
   loki:
     image: grafana/loki:2.9.4
-    container_name: loki
     command:
       - -config.file=/etc/loki/local-config.yaml
       - -distributor.replication-factor=1
@@ -83,10 +84,12 @@ services:
     restart: always
     networks:
       - msa-network
+    labels:
+      - app=loki
+      - stack=my-ultra-jennie
 
   promtail:
     image: grafana/promtail:3.0.0
-    container_name: promtail
     command: -config.file=/etc/promtail/config.yaml
     volumes:
       - ./observability/promtail/config.yaml:/etc/promtail/config.yaml:ro
@@ -98,10 +101,12 @@ services:
         condition: service_healthy
     networks:
       - msa-network
+    labels:
+      - app=promtail
+      - stack=my-ultra-jennie
 
   grafana:
     image: grafana/grafana:11.3.0
-    container_name: grafana
     user: "0"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
@@ -117,6 +122,9 @@ services:
         condition: service_healthy
     networks:
       - msa-network
+    labels:
+      - app=grafana
+      - stack=my-ultra-jennie
 
 # ============================================================================
 # 0-bis. Scheduler Service
