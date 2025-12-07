@@ -15,18 +15,18 @@ pipeline {
         }
 
         stage('Unit Test') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    args '-v $PWD:/app -w /app'
+                }
+            }
             steps {
                 echo '🧪 Running Unit Tests...'
                 sh '''
-                    docker run --rm \
-                        -v "$PWD":/app \
-                        -w /app \
-                        python:3.11-slim \
-                        sh -c "
-                            pip install --quiet -r requirements.txt && \
-                            pip install --quiet pytest pytest-cov && \
-                            pytest tests/ -v --tb=short --junitxml=test-results.xml || true
-                        "
+                    pip install --quiet -r requirements.txt
+                    pip install --quiet pytest pytest-cov
+                    pytest tests/ -v --tb=short --junitxml=test-results.xml || true
                 '''
             }
             post {
