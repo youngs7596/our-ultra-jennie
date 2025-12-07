@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_COMPOSE_FILE = 'docker-compose.yml'
-        COMPOSE_PROJECT_NAME = 'my-ultra-jennie'
+        COMPOSE_PROJECT_NAME = 'my-ultra-jennie-main'
     }
 
     stages {
