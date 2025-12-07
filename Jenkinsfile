@@ -71,7 +71,14 @@ pipeline {
                         
                         cd /home/youngs75/projects/my-ultra-jennie-main
 
-                        git pull https://${GIT_USER}:${GIT_PASS}@github.com/youngs7596/my-ultra-jennie.git
+                        # 1. 최신 코드 꾸러미 가져오기 (fetch)
+                        git fetch https://${GIT_USER}:${GIT_PASS}@github.com/youngs7596/my-ultra-jennie.git main
+
+                        # 2. 로컬 상태를 강제로 방금 가져온 최신 코드(FETCH_HEAD)와 똑같이 맞춥니다.
+                        git reset --hard FETCH_HEAD
+
+                        # 3. 혹시 모를 찌꺼기 파일 제거
+                        git clean -fd
                         
                         # 기존 컨테이너 중지 및 제거
                         docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
