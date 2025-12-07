@@ -146,11 +146,13 @@ class Trading:
             output_list = res_data['output1']
             logger.info(f"     - output1 리스트 길이: {len(output_list)}")
             
+            # [수정] 주문 내역이 없으면 체결된 것으로 간주하지 않음.
+            # API 응답이 일시적으로 비어있을 수 있으므로, 이 경우 False를 반환하여 재시도를 유도해야 함.
             if len(output_list) == 0:
                 # 주문 내역이 없음 (이미 체결되어 목록에서 사라졌을 수 있음)
                 logger.warning(f"   (Order) ⚠️ 주문({order_no})에 대한 내역이 없습니다. (이미 체결되었거나 존재하지 않을 수 있음, API 소요: {api_duration:.2f}초)")
-                # 주문 내역이 없으면 체결된 것으로 간주 (안전성: 체결된 주문은 목록에서 사라질 수 있음)
-                return True
+                # [수정] 체결된 것으로 간주하지 않고 False를 반환하여 재시도 유도
+                return False
             
             # 주문 내역이 있으면 첫 번째 항목 확인
             order_info = output_list[0]
@@ -177,19 +179,11 @@ class Trading:
                         logger.info(f"   (Order) ✅ 주문({order_no}) 전량 체결 확인! (체결 수량: {tot_ccld_qty}, 평균가: {avg_price:,.0f}, API 소요: {api_duration:.2f}초)")
                         return True
                     else:
-                        # 잔량이 있으면 부분 체결 (전량 체결이 아니므로 False)
+                        # [수정] 부분 체결 시에도 False를 반환하여 전량 체결될 때까지 대기하도록 명확히 함
                         logger.info(f"   (Order) ... 주문({order_no}) 부분 체결 상태입니다. (체결: {tot_ccld_qty}, 잔량: {rmn_qty}, API 소요: {api_duration:.2f}초)")
                         return False
-                elif rmn_qty == 0 and tot_ccld_qty == 0:
-                    # 잔량이 0이고 체결 수량도 0이면 이미 체결되어 목록에서 사라졌거나 취소됨
-                    # 취소 여부 확인
-                    if cncl_yn:
-                        logger.info(f"   (Order) ... 주문({order_no})이 취소되었습니다. (API 소요: {api_duration:.2f}초)")
-                        return False
-                    else:
-                        # 취소되지 않았고 잔량이 0이면 체결된 것으로 간주
-                        logger.info(f"   (Order) ✅ 주문({order_no}) 체결 확인! (잔량 0, 체결 수량 0 - 이미 체결되어 목록에서 제외된 것으로 추정, API 소요: {api_duration:.2f}초)")
-                        return True
+                # [수정] 잔량이 0이고 체결 수량도 0인 경우는 '주문 내역 없음'과 동일하게 취급.
+                # 이 로직은 불필요하며, 위에서 len(output_list) == 0 케이스로 처리됨.
                 else:
                     # 체결 수량이 0이고 잔량이 있으면 미체결
                     logger.info(f"   (Order) ... 주문({order_no})이 아직 '미체결' 상태입니다. (API 소요: {api_duration:.2f}초)")

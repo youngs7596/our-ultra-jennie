@@ -361,25 +361,29 @@ def get_portfolio_with_current_prices(session: Session, use_realtime: bool = Tru
         except Exception as e:
             logger.warning(f"⚠️ 실시간 현재가 조회 실패 (평균가 사용): {e}")
     
-    # 총 투자금액 계산
-    total_invested = sum(p["avg_price"] * p["quantity"] for p in portfolio)
-    
     result = []
-    for p in portfolio:
+    total_current_value = 0
+    # 먼저 총 평가금액을 계산합니다.
+    for p_orig in portfolio:
+        current_price = current_prices.get(p_orig["code"], p_orig["avg_price"])
+        total_current_value += current_price * p_orig["quantity"]
+
+    for p_orig in portfolio:
+        p = p_orig.copy() # 원본 수정을 방지하기 위해 복사본 사용
         invested = p["avg_price"] * p["quantity"]
         # 실시간 현재가 사용, 없으면 평균가 사용
         current_price = current_prices.get(p["code"], p["avg_price"])
         current_value = current_price * p["quantity"]
         profit = current_value - invested
         profit_rate = (profit / invested * 100) if invested > 0 else 0
-        weight = (invested / total_invested * 100) if total_invested > 0 else 0
+        weight = (current_value / total_current_value * 100) if total_current_value > 0 else 0
         
         result.append({
             "stock_code": p["code"],
             "stock_name": p["name"],
             "quantity": p["quantity"],
             "avg_price": p["avg_price"],
-            "current_price": current_price,
+            "current_price": current_price, # 조회된 실시간 현재가 반영
             "profit": profit,
             "profit_rate": profit_rate,
             "weight": weight,
@@ -529,4 +533,3 @@ def delete_config(session: Session, config_key: str) -> bool:
         session.rollback()
         logger.error(f"❌ DB: delete_config ('{config_key}') 실패! (에러: {e})")
         return False
-
