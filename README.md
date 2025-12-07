@@ -28,6 +28,7 @@
 - [데이터베이스 스키마](#-데이터베이스-스키마)
 - [API 문서](#-api-문서)
 - [설정](#-설정)
+- [테스트](#-테스트)
 
 ---
 
@@ -301,6 +302,7 @@ my-ultra-jennie/
 ├── shared/                      # 공유 모듈
 │   ├── llm.py                  # LLM 오케스트레이션 (JennieBrain)
 │   ├── database.py             # 데이터베이스 유틸리티
+│   ├── redis_cache.py          # Redis 캐싱 (의존성 주입 지원)
 │   ├── auth.py                 # 인증 및 시크릿 로더
 │   ├── config.py               # 설정 관리자
 │   ├── rabbitmq.py             # RabbitMQ 클라이언트
@@ -309,7 +311,9 @@ my-ultra-jennie/
 │   ├── news_classifier.py      # 뉴스 카테고리 분류
 │   ├── db/                     # SQLAlchemy 모델
 │   │   ├── models.py           # ORM 모델 정의
-│   │   └── connection.py       # DB 연결 관리
+│   │   ├── connection.py       # DB 연결 관리
+│   │   ├── repository.py       # Repository 패턴 (Watchlist, Portfolio)
+│   │   └── factor_repository.py # 팩터 분석 Repository
 │   ├── hybrid_scoring/         # 하이브리드 스코어링
 │   │   ├── quant_scorer.py     # 정량 점수 계산
 │   │   ├── hybrid_scorer.py    # 하이브리드 점수 결합
@@ -342,6 +346,13 @@ my-ultra-jennie/
 │   ├── grafana/                # Grafana 설정
 │   ├── loki/                   # Loki 설정
 │   └── promtail/               # Promtail 설정
+│
+├── tests/                      # 유닛 테스트
+│   ├── conftest.py            # pytest fixtures
+│   └── shared/                # shared 모듈 테스트
+│       ├── db/                # DB Repository 테스트
+│       ├── hybrid_scoring/    # 하이브리드 스코어링 테스트
+│       └── test_*.py          # 개별 모듈 테스트
 │
 ├── docker-compose.yml          # Docker Compose 설정
 ├── secrets.json                # API 키 (gitignore)
@@ -568,6 +579,54 @@ docker compose logs scout-job --tail 50
 - API 키는 secrets.json 파일로 관리
 - 실제 거래 모드에서는 충분한 테스트 후 운영
 - 가상 계좌로 충분히 테스트 후 실계좌 전환
+
+---
+
+## 🧪 테스트
+
+### 테스트 실행
+
+```bash
+# 가상환경 활성화
+source .venv/bin/activate
+
+# 전체 테스트 실행
+pytest tests/shared/ -v
+
+# 커버리지 포함 실행
+pytest tests/shared/ --cov=shared --cov-report=html
+
+# 특정 모듈 테스트
+pytest tests/shared/hybrid_scoring/ -v
+```
+
+### 테스트 커버리지
+
+| 모듈 | 테스트 수 | 설명 |
+|------|---------|------|
+| `test_redis_cache.py` | 25개 | Redis 캐싱 (fakeredis 사용) |
+| `test_repository.py` | 45개 | SQLAlchemy ORM (in-memory SQLite) |
+| `test_llm_*.py` | 52개 | LLM 프로바이더 및 JennieBrain |
+| `test_utils.py` | 27개 | 유틸리티 데코레이터 |
+| `test_config.py` | 24개 | ConfigManager |
+| `test_auth.py` | 12개 | 시크릿 로더 |
+| `test_market_regime.py` | 18개 | 시장 국면 탐지 |
+| `test_factor_scoring.py` | 22개 | 팩터 스코어링 |
+| `test_position_sizing.py` | 15개 | 포지션 사이징 |
+| `test_notification.py` | 16개 | 텔레그램 알림 |
+| `test_sector_classifier.py` | 18개 | 섹터 분류 |
+| `hybrid_scoring/` | 106개 | 하이브리드 스코어링 전체 |
+| **총계** | **410개** | - |
+
+### 테스트 의존성
+
+```txt
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+pytest-asyncio>=0.21.0
+fakeredis>=2.20.0
+```
 
 ---
 

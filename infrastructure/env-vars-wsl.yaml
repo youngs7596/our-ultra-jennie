@@ -61,7 +61,8 @@ SENTIMENT_COOLDOWN_SECONDS: "0.2"
 
 # 10. MariaDB 설정 (비밀번호는 secrets.json에서 로드)
 DB_TYPE: "MARIADB"
-MARIADB_HOST: "host.docker.internal"
+# Docker Desktop 제거 후 WSL 호스트로 직접 연결
+MARIADB_HOST: "127.0.0.1"
 MARIADB_PORT: "3306"
 # MARIADB_USER, MARIADB_PASSWORD는 secrets.json의 mariadb-user, mariadb-password 사용
 MARIADB_DBNAME: "jennie_db"

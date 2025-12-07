@@ -14,10 +14,10 @@ services:
     restart: always
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     networks:
       - msa-network
 
@@ -74,6 +74,12 @@ services:
     volumes:
       - ./observability/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
       - ./observability/loki/data:/tmp/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: always
     networks:
       - msa-network
@@ -89,7 +95,7 @@ services:
     restart: always
     depends_on:
       loki:
-        condition: service_started
+        condition: service_healthy
     networks:
       - msa-network
 
@@ -108,7 +114,7 @@ services:
     restart: always
     depends_on:
       loki:
-        condition: service_started
+        condition: service_healthy
     networks:
       - msa-network
 
@@ -135,6 +141,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8095/health')"]
@@ -159,6 +169,21 @@ services:
     network_mode: host
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      kis-gateway-mock:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9095/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9095"]
 
   # ============================================================================
@@ -253,9 +278,13 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
-      kis-gateway:
+      scheduler-service:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
@@ -281,9 +310,13 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
     depends_on:
-      kis-gateway-mock:
+      scheduler-service-mock:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
 
   # ============================================================================
@@ -306,9 +339,13 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
-      kis-gateway:
+      scheduler-service:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')"]
@@ -334,9 +371,13 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
     depends_on:
-      kis-gateway-mock:
+      scheduler-service-mock:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
 
   # ============================================================================
@@ -359,9 +400,13 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
-      kis-gateway:
+      scheduler-service:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8083/health')"]
@@ -387,9 +432,13 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
     depends_on:
-      kis-gateway-mock:
+      scheduler-service-mock:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
   # ============================================================================
   # 6. Price Monitor (가격 모니터링)
@@ -413,11 +462,13 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
-      kis-gateway:
+      scheduler-service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"]
@@ -446,11 +497,13 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     network_mode: host
     depends_on:
-      kis-gateway-mock:
+      scheduler-service-mock:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       redis:
         condition: service_healthy
-      rabbitmq:
+      chromadb:
         condition: service_healthy
 
   # ============================================================================
@@ -472,6 +525,15 @@ services:
     # WSL2 mirrored mode: 127.0.0.1로 Windows MariaDB 접근
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8086/health')"]
       interval: 30s
@@ -495,7 +557,13 @@ services:
       - KIS_GATEWAY_URL=http://localhost:9080
     network_mode: host
     depends_on:
-      kis-gateway-mock:
+      scheduler-service-mock:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
         condition: service_healthy
 
   # ============================================================================
@@ -518,7 +586,7 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
-      kis-gateway:
+      scheduler-service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -551,7 +619,7 @@ services:
       - REDIS_URL=redis://localhost:6379
     network_mode: host
     depends_on:
-      kis-gateway-mock:
+      scheduler-service-mock:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -580,6 +648,10 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
+      scheduler-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       redis:
         condition: service_healthy
       chromadb:
@@ -609,7 +681,9 @@ services:
       - REDIS_URL=redis://localhost:6379
     network_mode: host
     depends_on:
-      kis-gateway-mock:
+      scheduler-service-mock:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -640,17 +714,16 @@ services:
       - ./secrets.json:/app/config/secrets.json:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
-      kis-gateway:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
+      scheduler-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: always
+    networks:
+      - msa-network
 
   dashboard-v2-frontend:
     build:
@@ -672,6 +745,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: always
+    networks:
+      - msa-network
 
   # Cloudflare Tunnel - 외부 접근을 위한 보안 터널
   # secrets.json의 cloudflare-tunnel-token 사용
@@ -688,6 +764,31 @@ services:
       dashboard-v2-frontend:
         condition: service_healthy
     restart: unless-stopped
+
+  # ============================================================================
+  # CI - Jenkins (Dockerized)
+  # ============================================================================
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    profiles: ["ci"]
+    user: "0"               # root로 실행해 docker.sock 접근 허용
+    environment:
+      - TZ=Asia/Seoul
+    ports:
+      - "8180:8080"         # 호스트 8180 → Jenkins 8080
+    volumes:
+      - ./jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/login || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - msa-network
 
 networks:
   msa-network:

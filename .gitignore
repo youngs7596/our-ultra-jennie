@@ -41,6 +41,9 @@ observability/grafana/grafana.db
 observability/grafana/plugins/
 observability/loki/data/
 
+# Jenkins
+jenkins_home/
+
 # Build & Cache
 *.mst
 *.zip
@@ -51,8 +54,8 @@ build/
 docs_cache/
 
 # Test & Temp
-test_*.py
-*_test.py
+#test_*.py  # Allow tests in tests/ folder
+#*_test.py
 *.tmp
 *.bak
 
@@ -70,3 +73,4 @@ Thumbs.db
 gpt_v2_opt_results_*.json
 smart_universe.json
 
+.coverage
