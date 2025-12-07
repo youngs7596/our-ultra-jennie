@@ -651,6 +651,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: always
+    networks:
+      - msa-network
 
   dashboard-v2-frontend:
     build:
@@ -672,6 +675,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: always
+    networks:
+      - msa-network
 
   # Cloudflare Tunnel - 외부 접근을 위한 보안 터널
   # secrets.json의 cloudflare-tunnel-token 사용
