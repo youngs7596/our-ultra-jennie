@@ -9,41 +9,29 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "🔀 Branch: ${env.GIT_BRANCH ?: env.BRANCH_NAME}"
+                echo "🔀 Branch: ${env.BRANCH_NAME ?: env.GIT_BRANCH}"
                 echo "📝 Commit: ${env.GIT_COMMIT}"
             }
         }
 
-        stage('Setup Python Environment') {
-            steps {
-                sh '''
-                    python3 -m venv .venv
-                    . .venv/bin/activate
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
-                '''
-            }
-        }
-
         stage('Unit Test') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    args '-v $PWD:/app -w /app'
+                }
+            }
             steps {
                 echo '🧪 Running Unit Tests...'
                 sh '''
-                    . .venv/bin/activate
-                    pytest tests/ -v --tb=short --junitxml=test-results.xml --cov=shared --cov-report=xml:coverage.xml --cov-report=html:coverage-html || true
+                    pip install --quiet -r requirements.txt
+                    pip install --quiet pytest pytest-cov
+                    pytest tests/ -v --tb=short --junitxml=test-results.xml || true
                 '''
             }
             post {
                 always {
                     junit allowEmptyResults: true, testResults: 'test-results.xml'
-                    publishHTML(target: [
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'coverage-html',
-                        reportFiles: 'index.html',
-                        reportName: 'Coverage Report'
-                    ])
                 }
             }
         }
@@ -55,7 +43,7 @@ pipeline {
             when {
                 anyOf {
                     branch 'main'
-                    expression { env.GIT_BRANCH == 'origin/main' }
+                    expression { env.GIT_BRANCH?.contains('main') }
                 }
             }
             steps {
@@ -70,7 +58,7 @@ pipeline {
             when {
                 anyOf {
                     branch 'main'
-                    expression { env.GIT_BRANCH == 'origin/main' }
+                    expression { env.GIT_BRANCH?.contains('main') }
                 }
             }
             steps {
@@ -92,11 +80,11 @@ pipeline {
     post {
         always {
             echo '📋 Pipeline finished!'
-            cleanWs(cleanWhenNotBuilt: false, deleteDirs: true, disableDeferredWipeout: true)
         }
         success {
             script {
-                if (env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main') {
+                def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                if (branchName.contains('main')) {
                     echo '✅ Build & Deploy succeeded!'
                 } else {
                     echo '✅ Unit Tests passed!'
