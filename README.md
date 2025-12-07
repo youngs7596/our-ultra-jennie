@@ -535,6 +535,42 @@ docker compose --profile real up -d
 
 # Mock 모드 - 시뮬레이션
 docker compose --profile mock up -d
+
+# CI (Jenkins) - Jenkins 전용
+docker compose --profile ci up -d
+```
+
+프로파일 요약:
+| 프로파일 | 목적 | 비고 |
+|----------|------|------|
+| `real` | 실거래/운영 | 기본 운영용 |
+| `mock` | 모의 실행 | 토큰 절약/시뮬레이션 |
+| `ci` | Jenkins 실행 | 포트 8180 (Jenkins UI) |
+
+### CI/CD (Jenkins)
+
+로컬 WSL2에서 Jenkins 컨테이너가 호스트의 Docker Daemon을 사용해 배포를 진행합니다.
+
+- 위치: `http://localhost:8180` (프로파일 `ci`)
+- 이미지: `docker/jenkins/Dockerfile` (Docker CLI 포함)
+- 볼륨: `./jenkins_home:/var/jenkins_home`, `/var/run/docker.sock`, `/home/youngs75/projects/my-ultra-jennie-main` (배포 전용 워킹트리)
+- 파이프라인 동작:
+  - `development` 브랜치 push/PR: Unit Test만 실행 (pytest)
+  - `main` 브랜치: Unit Test → Docker Build → Deploy (`--profile real`)
+- 배포 경로: `/home/youngs75/projects/my-ultra-jennie-main` (main 전용 워킹트리, Jenkins가 `git fetch/reset`으로 동기화)
+- 필요 Credential: `my-ultra-jennie-github` (Username + PAT, scope: `repo`, `admin:repo_hook`)
+
+배포용 워킹트리 준비:
+```bash
+cd /home/youngs75/projects
+git clone https://github.com/youngs7596/my-ultra-jennie.git my-ultra-jennie-main
+cd my-ultra-jennie-main && git checkout main
+```
+
+재시작:
+```bash
+docker compose --profile ci down
+docker compose --profile ci up -d --build
 ```
 
 ### Mock 모드 설정
@@ -626,6 +662,7 @@ pytest-cov>=4.1.0
 pytest-mock>=3.12.0
 pytest-asyncio>=0.21.0
 fakeredis>=2.20.0
+scipy>=1.11.0
 ```
 
 ---
