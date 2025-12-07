@@ -65,6 +65,12 @@ pipeline {
             steps {
                 echo '🚀 Deploying to production...'
                 sh '''
+                    # 호스트의 실제 프로젝트 경로로 이동하여 배포
+                    cd /home/youngs75/projects/my-ultra-jennie
+                    
+                    # 최신 코드 가져오기
+                    git pull origin main
+                    
                     # 기존 컨테이너 중지 및 제거
                     docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
                     
