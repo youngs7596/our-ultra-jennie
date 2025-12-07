@@ -69,7 +69,7 @@ pipeline {
                     cd /home/youngs75/projects/my-ultra-jennie
                     
                     # 최신 코드 가져오기 (호스트의 gh 인증 사용)
-                    git pull origin main
+                    git -c safe.directory=/home/youngs75/projects/my-ultra-jennie pull origin main
                     
                     # 기존 컨테이너 중지 및 제거
                     docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
