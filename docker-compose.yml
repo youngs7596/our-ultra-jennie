@@ -75,7 +75,7 @@ services:
       - -replication-factor=1
     user: "0"
     ports:
-      - "3100:3100"
+      - "3400:3100"
     volumes:
       - ./observability/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
       - ./observability/loki/data:/tmp/loki
@@ -117,7 +117,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_DEFAULT_THEME=dark
     ports:
-      - "3000:3000"
+      - "3300:3000"
     volumes:
       - ./observability/grafana:/var/lib/grafana
     restart: always
