@@ -71,23 +71,19 @@ pipeline {
                         
                         cd /home/youngs75/projects/my-ultra-jennie-main
 
-                        # 1. 최신 코드 꾸러미 가져오기 (fetch)
+                        # 1. 최신 코드 강제 동기화
                         git fetch https://${GIT_USER}:${GIT_PASS}@github.com/youngs7596/my-ultra-jennie.git main
-
-                        # 2. 로컬 상태를 강제로 방금 가져온 최신 코드(FETCH_HEAD)와 똑같이 맞춥니다.
                         git reset --hard FETCH_HEAD
-
-                        # 3. 혹시 모를 찌꺼기 파일 제거
                         git clean -fd
                         
-                        # 기존 컨테이너 중지 및 제거
-                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
+                        # 2. --profile real 추가해서 기존 real 컨테이너 내리기
+                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real down --remove-orphans --timeout 30 || true
                         
-                        # 새 컨테이너 시작
-                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} up -d
+                        # 3. --profile real 추가 + 강제 빌드 + 강제 재생성
+                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real up -d --build --force-recreate
                         
-                        # 상태 확인
-                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} ps
+                        # 4. 상태 확인 (여기도 profile real을 붙여야 목록에 다 나옵니다)
+                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real ps
                     '''
                 }
             }
