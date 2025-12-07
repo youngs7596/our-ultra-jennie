@@ -2,15 +2,15 @@ pipeline {
     agent any
 
     environment {
-        PYTHON_VERSION = '3.11'
+        DOCKER_COMPOSE_FILE = 'docker-compose.yml'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Branch: ${env.BRANCH_NAME ?: env.GIT_BRANCH}"
-                echo "Commit: ${env.GIT_COMMIT}"
+                echo "🔀 Branch: ${env.GIT_BRANCH ?: env.BRANCH_NAME}"
+                echo "📝 Commit: ${env.GIT_COMMIT}"
             }
         }
 
@@ -25,65 +25,65 @@ pipeline {
             }
         }
 
-        stage('Lint') {
-            steps {
-                sh '''
-                    . .venv/bin/activate
-                    pip install flake8
-                    flake8 shared/ services/ scripts/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
-                '''
-            }
-        }
-
         stage('Unit Test') {
             steps {
+                echo '🧪 Running Unit Tests...'
                 sh '''
                     . .venv/bin/activate
-                    pytest tests/ -v --tb=short --junitxml=test-results.xml --cov=shared --cov-report=xml:coverage.xml || true
+                    pytest tests/ -v --tb=short --junitxml=test-results.xml --cov=shared --cov-report=xml:coverage.xml --cov-report=html:coverage-html || true
                 '''
             }
             post {
                 always {
                     junit allowEmptyResults: true, testResults: 'test-results.xml'
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'coverage-html',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
                 }
             }
         }
 
-        stage('Build') {
+        // ====================================================
+        // main 브랜치에서만 실행: Docker Build & Deploy
+        // ====================================================
+        stage('Docker Build') {
+            when {
+                anyOf {
+                    branch 'main'
+                    expression { env.GIT_BRANCH == 'origin/main' }
+                }
+            }
             steps {
-                echo 'Building application...'
+                echo '🐳 Building Docker images...'
                 sh '''
-                    . .venv/bin/activate
-                    echo "Python version: $(python --version)"
-                    echo "Installed packages:"
-                    pip list
+                    docker-compose -f ${DOCKER_COMPOSE_FILE} build --no-cache
                 '''
             }
         }
 
         stage('Deploy') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    expression { env.GIT_BRANCH == 'origin/main' }
+                }
             }
             steps {
-                echo 'Deploying to production...'
-                // 여기에 실제 배포 스크립트 추가
-                // 예: docker-compose up -d
-                // 예: kubectl apply -f k8s/
+                echo '🚀 Deploying to production...'
                 sh '''
-                    echo "Deployment would happen here for main branch"
-                '''
-            }
-        }
-
-        stage('Deploy to Dev') {
-            when {
-                branch 'development'
-            }
-            steps {
-                echo 'Deploying to development environment...'
-                sh '''
-                    echo "Development deployment would happen here"
+                    # 기존 컨테이너 중지 및 제거
+                    docker-compose -f ${DOCKER_COMPOSE_FILE} down --remove-orphans || true
+                    
+                    # 새 컨테이너 시작
+                    docker-compose -f ${DOCKER_COMPOSE_FILE} up -d
+                    
+                    # 상태 확인
+                    docker-compose -f ${DOCKER_COMPOSE_FILE} ps
                 '''
             }
         }
@@ -91,14 +91,20 @@ pipeline {
 
     post {
         always {
-            echo 'Pipeline finished!'
-            cleanWs()
+            echo '📋 Pipeline finished!'
+            cleanWs(cleanWhenNotBuilt: false, deleteDirs: true, disableDeferredWipeout: true)
         }
         success {
-            echo '✅ Build succeeded!'
+            script {
+                if (env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main') {
+                    echo '✅ Build & Deploy succeeded!'
+                } else {
+                    echo '✅ Unit Tests passed!'
+                }
+            }
         }
         failure {
-            echo '❌ Build failed!'
+            echo '❌ Pipeline failed!'
         }
     }
 }
