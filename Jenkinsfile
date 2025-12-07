@@ -68,6 +68,9 @@ pipeline {
                     # 호스트의 실제 프로젝트 경로로 이동하여 배포
                     cd /home/youngs75/projects/my-ultra-jennie
                     
+                    # Git safe directory 설정 (소유권 문제 해결)
+                    git config --global --add safe.directory /home/youngs75/projects/my-ultra-jennie
+                    
                     # 최신 코드 가져오기
                     git pull origin main
                     
