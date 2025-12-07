@@ -41,6 +41,9 @@ observability/grafana/grafana.db
 observability/grafana/plugins/
 observability/loki/data/
 
+# Jenkins
+jenkins_home/
+
 # Build & Cache
 *.mst
 *.zip
