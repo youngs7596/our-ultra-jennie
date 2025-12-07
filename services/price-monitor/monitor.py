@@ -42,6 +42,25 @@ class PriceMonitor:
     def start_monitoring(self, dry_run: bool = True):
         logger.info("=== 가격 모니터링 시작 ===")
         try:
+            # 시장 운영 여부 확인 (휴장/주말/장외면 바로 중단)
+            try:
+                if hasattr(self.kis, "check_market_open"):
+                    if not self.kis.check_market_open():
+                        logger.warning("💤 시장 미운영(휴장/주말/장외)으로 모니터링을 건너뜁니다.")
+                        return
+                else:
+                    # Gateway 클라이언트 등 최소한의 주말/시간 필터
+                    from datetime import datetime
+                    import pytz
+                    kst = pytz.timezone("Asia/Seoul")
+                    now = datetime.now(kst)
+                    if not (0 <= now.weekday() <= 4 and 8 <= now.hour <= 16):
+                        logger.warning("💤 시장 미운영 시간(주말/장외)으로 모니터링을 건너뜁니다.")
+                        return
+            except Exception as e:
+                logger.error(f"시장 운영 여부 확인 실패: {e}", exc_info=True)
+                return
+
             if self.use_websocket:
                 self._monitor_with_websocket(dry_run)
             else:
