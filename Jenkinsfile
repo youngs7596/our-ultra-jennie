@@ -65,7 +65,7 @@ pipeline {
             steps {
                 echo '🚀 Deploying to production...'
 
-                withCredentials([usernamePassword(credentialsId: 'github-token', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'my-ultra-jennie-github', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
                     sh '''
                         git config --global --add safe.directory "*" 
                         
