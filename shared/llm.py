@@ -1109,14 +1109,15 @@ class JennieBrain:
         종목의 뉴스, 펀더멘털, 모멘텀을 종합하여 매수 적합도 점수(0~100)를 산출합니다.
         [Phase 1: Hunter Scout] - Claude Haiku 우선, 실패 시 OpenAI/Gemini 폴백
         """
-        # 폴백 체인: Claude → OpenAI → Gemini
+        # [v4.2] Dream Team Config: Hunter = Gemini 2.5 Flash
+        # 물량 공세가 가능한 Gemini Flash를 최우선으로 사용
         providers = []
+        if self.provider_gemini:
+            providers.append(('GEMINI', self.provider_gemini))
         if hasattr(self, 'provider_claude') and self.provider_claude:
             providers.append(('CLAUDE', self.provider_claude))
         if self.provider_openai:
             providers.append(('OPENAI', self.provider_openai))
-        if self.provider_gemini:
-            providers.append(('GEMINI', self.provider_gemini))
         
         if not providers:
             logger.error("❌ [JennieBrain] LLM 모델이 초기화되지 않았습니다!")
@@ -1129,10 +1130,16 @@ class JennieBrain:
             try:
                 logger.info(f"--- [JennieBrain/Phase1-Hunter] 필터링 ({provider_name}): {stock_info.get('name')} ---")
                 
+                # [v4.2] Gemini인 경우 Flash 모델 강제 사용
+                model_name = None
+                if provider_name == 'GEMINI' and hasattr(provider, 'flash_model_name'):
+                    model_name = provider.flash_model_name()
+                
                 result = provider.generate_json(
                     prompt,
                     ANALYSIS_RESPONSE_SCHEMA,
                     temperature=0.3,
+                    model_name=model_name
                 )
                 
                 logger.info(f"--- [JennieBrain] 분석 완료 ({provider_name}): {stock_info.get('name')} ---")
@@ -1264,8 +1271,19 @@ JSON으로 응답: {{"score": 숫자, "grade": "등급", "reason": "이유"}}
         토론 로그(텍스트)를 반환합니다.
         [Phase 2: Debate] - GPT-5.1-mini (깊이 있는 분석 및 토론)
         """
-        # OpenAI가 없으면 Gemini로 폴백
-        provider = self.provider_openai if self.provider_openai else self.provider_gemini
+        # [v4.2] Dream Team Config: Phase 2 Debate (Bull vs Bear)
+        # 1순위: Claude (Haiku) - 말이 유려하고 빠름
+        # 2순위: Gemini (Flash) - 빠름
+        # 3순위: OpenAI (Mini) - 폴백
+        
+        provider = None
+        if hasattr(self, 'provider_claude') and self.provider_claude:
+            provider = self.provider_claude
+        elif self.provider_gemini:
+            provider = self.provider_gemini
+        elif self.provider_openai:
+            provider = self.provider_openai
+            
         if provider is None:
             return "Debate Skipped (Model Error)"
 
@@ -1337,8 +1355,17 @@ JSON으로 응답: {{"score": 숫자, "grade": "등급", "reason": "이유"}}
                 "required": ["debate_log"]
             }
             
-            # GPT-5.1-mini (or GPT-4o-mini) 사용 - Reasoning quality 우수
-            model_name = provider.reasoning_model if hasattr(provider, 'reasoning_model') else None
+            # [v4.2] Dream Team Config
+            # Claude: Haiku (Fast)
+            # Gemini: Flash
+            # OpenAI: Mini
+            model_name = None
+            if provider.name == 'claude':
+                model_name = getattr(provider, 'fast_model', None)
+            elif provider.name == 'gemini':
+                model_name = provider.flash_model_name()
+            # OpenAI는 기본 Mini 사용
+
             logger.info(f"--- [JennieBrain/Phase2-Debate] 깊이 있는 토론 ({provider.name}): {stock_info.get('name')} ---")
             
             result = provider.generate_json(
@@ -1361,8 +1388,19 @@ JSON으로 응답: {{"score": 숫자, "grade": "등급", "reason": "이유"}}
         Debate 로그와 종목 정보를 바탕으로 'Judge(재판관)'가 최종 점수와 승인을 결정합니다.
         [Phase 3: Judge] - GPT-5.1-mini (체계적인 최종 판단)
         """
-        # OpenAI가 없으면 Gemini로 폴백
-        provider = self.provider_openai if self.provider_openai else self.provider_gemini
+        # [v4.2] Dream Team Config: Phase 3 Judge (Supreme Jennie)
+        # 1순위: Claude (Sonnet) - 냉철한 판단
+        # 2순위: Gemini (Pro) - 차선
+        # 3순위: OpenAI (Mini) - 폴백
+        
+        provider = None
+        if hasattr(self, 'provider_claude') and self.provider_claude:
+            provider = self.provider_claude
+        elif self.provider_gemini:
+            provider = self.provider_gemini
+        elif self.provider_openai:
+            provider = self.provider_openai
+
         if provider is None:
              return {'score': 0, 'grade': 'D', 'reason': 'JennieBrain 초기화 실패'}
 
@@ -1418,14 +1456,23 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
 **중요: 기본 50점에서 시작하여 토론 결과에 따라 가감하세요. Bull과 Bear가 팽팽하면 50~55점입니다.**"""
         
         try:
-            # GPT-5.1-mini (or GPT-4o-mini) 사용 - 체계적인 판단 우수
-            model_name = provider.reasoning_model if hasattr(provider, 'reasoning_model') else None
+            # [v4.2] Dream Team Config
+            # Claude: Sonnet (Reasoning)
+            # Gemini: Pro (Default)
+            # OpenAI: Mini
+            model_name = None
+            if provider.name == 'claude':
+                model_name = getattr(provider, 'reasoning_model', None)
+            elif provider.name == 'gemini':
+                model_name = None # Default (Pro) 사용
+                
             logger.info(f"--- [JennieBrain/Phase3-Judge] 최종 판결 ({provider.name}): {stock_info.get('name')} ---")
             
             result = provider.generate_json(
                 prompt,
                 ANALYSIS_RESPONSE_SCHEMA, # 기존 스키마 재사용 (score, grade, reason)
-                temperature=0.1 # 판결은 냉정하게
+                temperature=0.1, # 판결은 냉정하게
+                model_name=model_name
             )
             return result
         except Exception as e:
@@ -1450,9 +1497,15 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
         Returns:
             {'score': int, 'grade': str, 'reason': str}
         """
-        # Claude > GPT > Gemini 순으로 시도
-        provider = self.provider_claude if hasattr(self, 'provider_claude') and self.provider_claude else \
-                   (self.provider_openai if self.provider_openai else self.provider_gemini)
+        # [v4.2] Dream Team Config: Hunter Scoring (Gemini Flash)
+        provider = None
+        if self.provider_gemini:
+            provider = self.provider_gemini
+        elif hasattr(self, 'provider_claude') and self.provider_claude:
+            provider = self.provider_claude
+        elif self.provider_openai:
+            provider = self.provider_openai
+
         if provider is None:
             logger.error("❌ [JennieBrain] LLM 모델이 초기화되지 않았습니다!")
             return {'score': 0, 'grade': 'D', 'reason': 'JennieBrain 초기화 실패'}
@@ -1463,10 +1516,16 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판결 이유"}}
             provider_name = provider.name.upper()
             logger.info(f"--- [JennieBrain/v5-Hunter] 통계기반 필터링 ({provider_name}): {stock_info.get('name')} ---")
             
+            # Gemini Flash 강제 사용
+            model_name = None
+            if provider.name == 'gemini':
+                model_name = provider.flash_model_name()
+            
             result = provider.generate_json(
                 prompt,
                 ANALYSIS_RESPONSE_SCHEMA,
                 temperature=0.2,  # 데이터 기반이므로 낮은 temperature
+                model_name=model_name
             )
             
             logger.info(f"   ✅ v5 Hunter 완료: {stock_info.get('name')} - {result.get('score')}점")
@@ -1550,7 +1609,15 @@ JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유"}}
         Returns:
             {'score': int, 'grade': str, 'reason': str}
         """
-        provider = self.provider_openai if self.provider_openai else self.provider_gemini
+        # [v4.2] Dream Team Config: Judge (Claude Sonnet)
+        provider = None
+        if hasattr(self, 'provider_claude') and self.provider_claude:
+            provider = self.provider_claude
+        elif self.provider_gemini:
+            provider = self.provider_gemini
+        elif self.provider_openai:
+            provider = self.provider_openai
+            
         if provider is None:
             return {'score': 0, 'grade': 'D', 'reason': 'Model Error'}
         
