@@ -440,7 +440,7 @@ class ClaudeLLMProvider(BaseLLMProvider):
             try:
                 response = self.client.messages.create(
                     model=target_model,
-                    max_tokens=1024,
+                    max_tokens=4096,  # 토론/판결 시 긴 응답 지원
                     temperature=temperature,
                     system="You are a helpful assistant. Always respond with valid JSON only, no markdown formatting.",
                     messages=[{"role": "user", "content": prompt}]
