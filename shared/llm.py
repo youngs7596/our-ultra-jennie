@@ -1148,6 +1148,14 @@ class JennieBrain:
                 )
                 
                 logger.info(f"--- [JennieBrain] 분석 완료 ({provider_name}): {stock_info.get('name')} ---")
+                
+                # [v4.5] 점수 범위 제한 (LLM이 100점 초과 반환하는 경우 방지)
+                raw_score = result.get('score', 0)
+                capped_score = min(100, max(0, raw_score))
+                if raw_score != capped_score:
+                    logger.warning(f"   ⚠️ 점수 보정: {raw_score}점 → {capped_score}점")
+                result['score'] = capped_score
+                
                 logger.info(f"   (점수): {result.get('score')}점 (등급: {result.get('grade')})")
                 
                 return result
