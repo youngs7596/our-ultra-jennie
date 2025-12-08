@@ -753,7 +753,56 @@ def get_watchlist_history(connection, snapshot_date):
     finally:
         if cursor: cursor.close()
 
-# --- (get_daily_prices, get_active_watchlist, get_today_total_buy_amount - 기존과 동일) ---
+def get_all_stock_codes(connection):
+    """
+    [v4.5] 전체 종목 코드 리스트를 조회합니다.
+    1순위: STOCK_MASTER (빠름)
+    2순위: STOCK_DAILY_PRICES_3Y (느리지만 확실함)
+    """
+    codes = []
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        
+        # 1. STOCK_MASTER 조회
+        try:
+            if _is_mariadb():
+                cursor.execute("SELECT STOCK_CODE FROM STOCK_MASTER WHERE IS_ACTIVE = 1")
+            else:
+                cursor.execute("SELECT STOCK_CODE FROM STOCK_MASTER WHERE IS_ACTIVE = 1")
+            
+            rows = cursor.fetchall()
+            if rows:
+                codes = [row[0] for row in rows]
+                logger.info(f"✅ DB: STOCK_MASTER에서 {len(codes)}개 종목 로드 완료")
+                return codes
+        except Exception as e:
+            logger.debug(f"ℹ️ STOCK_MASTER 조회 실패 ({e}), STOCK_DAILY_PRICES_3Y 시도...")
+
+        # 2. STOCK_DAILY_PRICES_3Y 조회 (Fallback)
+        # 최근 데이터가 있는 종목만 추출
+        if _is_mariadb():
+            date_filter = "DATE_SUB(NOW(), INTERVAL 7 DAY)"
+            sql = f"SELECT DISTINCT STOCK_CODE FROM STOCK_DAILY_PRICES_3Y WHERE PRICE_DATE >= {date_filter}"
+        else:
+            date_filter = "SYSDATE - 7"
+            sql = f"SELECT DISTINCT STOCK_CODE FROM STOCK_DAILY_PRICES_3Y WHERE PRICE_DATE >= {date_filter}"
+            
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        if rows:
+            codes = [row[0] for row in rows]
+            logger.info(f"✅ DB: STOCK_DAILY_PRICES_3Y에서 {len(codes)}개 종목 로드 완료")
+            return codes
+            
+        logger.warning("⚠️ DB: 전체 종목 코드 조회 실패 (데이터 없음)")
+        return []
+        
+    except Exception as e:
+        logger.error(f"❌ DB: get_all_stock_codes 실패! (에러: {e})")
+        return []
+    finally:
+        if cursor: cursor.close()
 def get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_PRICES_3Y"):
     """
     특정 종목의 일봉 데이터를 조회합니다. (SQLAlchemy 사용)

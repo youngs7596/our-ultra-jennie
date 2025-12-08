@@ -31,7 +31,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./chroma_data:/chroma/chroma
+      - /docker_data/chroma_data:/chroma/chroma
     restart: always
     healthcheck:
       test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8000'" ]
@@ -53,7 +53,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./redis_data:/data
+      - /docker_data/redis_data:/data
     restart: always
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -78,7 +78,7 @@ services:
       - "3400:3100"
     volumes:
       - ./observability/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
-      - ./observability/loki/data:/tmp/loki
+      - /docker_data/loki_data:/tmp/loki
     healthcheck:
       test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
       interval: 10s
@@ -119,7 +119,7 @@ services:
     ports:
       - "3300:3000"
     volumes:
-      - ./observability/grafana:/var/lib/grafana
+      - /docker_data/grafana_data:/var/lib/grafana
     restart: always
     depends_on:
       loki:
@@ -146,7 +146,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@127.0.0.1:5672/
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
-      - ./scheduler_data:/app/data
+      - /docker_data/scheduler_data:/app/data
     labels:
       - app=scheduler-service
       - stack=my-ultra-jennie
@@ -178,7 +178,7 @@ services:
       - PORT=9095
       - RABBITMQ_URL=amqp://guest:guest@localhost:5672/
     volumes:
-      - ./scheduler_data:/app/data
+      - /docker_data/scheduler_data:/app/data
     labels:
       - app=scheduler-service-mock
       - stack=my-ultra-jennie

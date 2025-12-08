@@ -992,13 +992,21 @@ def get_momentum_stocks(kis_api, db_conn, period_months=6, top_n=30, watchlist_s
         kospi_return = (kospi_end_price / kospi_start_price - 1) * 100
         
         # 2. Watchlist 또는 BLUE_CHIP_STOCKS에서 종목 가져오기
-        watchlist = watchlist_snapshot or database.get_active_watchlist(db_conn)
-        if not watchlist:
-            stocks_to_check = [s for s in BLUE_CHIP_STOCKS if s.get('is_tradable', True)]
-        else:
-            stocks_to_check = [{'code': code, 'name': info.get('name', code)} for code, info in watchlist.items() if info.get('is_tradable', True)]
+        # [v4.5] 사용자 요청으로 전체 종목 대상으로 변경 (Watchlist 한정 X)
+        all_codes = database.get_all_stock_codes(db_conn)
         
-        logger.info(f"   (D) {len(stocks_to_check)}개 종목의 모멘텀 계산 중...")
+        if not all_codes:
+            # Fallback: Watchlist or Bluechips
+            watchlist = watchlist_snapshot or database.get_active_watchlist(db_conn)
+            if not watchlist:
+                stocks_to_check = [s for s in BLUE_CHIP_STOCKS if s.get('is_tradable', True)]
+            else:
+                stocks_to_check = [{'code': code, 'name': info.get('name', code)} for code, info in watchlist.items() if info.get('is_tradable', True)]
+        else:
+             # 전체 종목 (이름은 일단 코드로 대체하거나 추후 DB에서 가져올 수 있음)
+             stocks_to_check = [{'code': code, 'name': code} for code in all_codes]
+
+        logger.info(f"   (D) {len(stocks_to_check)}개 종목의 모멘텀 계산 중... (전체 대상)")
         
         # 3. 각 종목의 모멘텀 계산
         for stock in stocks_to_check:
@@ -1254,12 +1262,14 @@ def fetch_stock_news_from_chroma(vectorstore, stock_code: str, stock_name: str, 
                 k=k,
                 filter={"stock_code": stock_code}
             )
+            # logger.debug(f"   (D) [{stock_code}] 필터 검색 결과: {len(docs)}건")
         except Exception:
             # 필터 실패시 종목명으로 검색
             docs = vectorstore.similarity_search(
                 query=f"{stock_name} 주식 뉴스",
                 k=k
             )
+            logger.debug(f"   (D) [{stock_code}] 종목명 검색(Fallback): {len(docs)}건")
             # 종목 관련 뉴스만 필터링
             docs = [d for d in docs if stock_name in d.page_content or stock_code in str(d.metadata)]
         
