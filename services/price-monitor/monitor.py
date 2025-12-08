@@ -182,8 +182,14 @@ class PriceMonitor:
             
             # Fallback: Fixed Stop Loss
             stop_loss = self.config.get_float('SELL_STOP_LOSS_PCT', default=-5.0)
+            
+            # [Jennie's Fix] Stop Loss는 항상 음수여야 합니다. 양수로 설정된 경우 음수로 변환합니다.
+            # 예: 사용자가 5.0(5% 손절)으로 설정하면 -5.0으로 처리하여 2% 수익 구간에서 매도되는 사고 방지
+            if stop_loss > 0:
+                stop_loss = -stop_loss
+
             if profit_pct <= stop_loss:
-                return {"signal": True, "reason": f"Fixed Stop Loss: {profit_pct:.2f}%", "quantity_pct": 100.0}
+                return {"signal": True, "reason": f"Fixed Stop Loss: {profit_pct:.2f}% (Limit: {stop_loss}%)", "quantity_pct": 100.0}
 
             # 2. RSI Overbought (Scale-out)
             if not daily_prices.empty and len(daily_prices) >= 15:

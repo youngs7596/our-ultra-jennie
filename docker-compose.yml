@@ -759,6 +759,7 @@ services:
       - REDIS_URL=redis://host.docker.internal:6379/0
       - KIS_GATEWAY_URL=http://host.docker.internal:8080
       - SECRETS_FILE=/app/config/secrets.json
+      - MARIADB_HOST=host.docker.internal
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
