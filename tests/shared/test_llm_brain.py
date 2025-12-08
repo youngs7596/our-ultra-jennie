@@ -24,7 +24,7 @@ def mock_gemini_provider():
     provider = MagicMock()
     provider.name = 'gemini'
     provider.flash_model_name.return_value = 'gemini-2.5-flash'
-    provider.default_model = 'gemini-2.5-pro'
+    provider.default_model = 'gemini-2.5-flash'
     return provider
 
 

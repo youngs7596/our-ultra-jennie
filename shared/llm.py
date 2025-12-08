@@ -42,7 +42,7 @@ JSON 응답 스키마:
 - SECRET_ID_GEMINI_API_KEY: Gemini API 키 시크릿 ID
 - SECRET_ID_OPENAI_API_KEY: OpenAI API 키 시크릿 ID  
 - SECRET_ID_CLAUDE_API_KEY: Claude API 키 시크릿 ID
-- LLM_MODEL_NAME: Gemini 모델명 (기본: gemini-2.5-pro)
+- LLM_MODEL_NAME: Gemini 모델명 (기본: gemini-2.5-flash)
 - OPENAI_MODEL_NAME: OpenAI 모델명 (기본: gpt-4o-mini)
 - CLAUDE_MODEL_NAME: Claude 모델명 (기본: claude-sonnet-4-20250514)
 """
@@ -59,7 +59,7 @@ from . import auth # (같은 패키지 내의 auth 모듈 임포트)
 logger = logging.getLogger(__name__)
 
 # [수정] LLM 모델 및 JSON 출력 스키마 설정
-LLM_MODEL_NAME = "gemini-2.5-pro"  # 로컬/클라우드 공통 프리미엄 모델
+LLM_MODEL_NAME = "gemini-2.5-flash"  # 로컬/클라우드 공통 프리미엄 모델
 
 # LLM이 반환할 JSON의 구조를 정의합니다.
 RESPONSE_SCHEMA = {
