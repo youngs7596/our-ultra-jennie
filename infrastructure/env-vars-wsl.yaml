@@ -89,8 +89,8 @@ SCHEDULER_QUEUE_SCOUT_JOB: "real.jobs.scout"
 ENABLE_SCOUT_JOB_WORKER: "true"
 SCHEDULER_SCOUT_JOB_ID: "scout-daily"  # jobs 테이블의 job_id와 일치해야 함
 
-# 13. 매수 기준 점수 (B등급 이상)
-MIN_LLM_SCORE: "70"
+# 13. 매수 기준 점수 (B등급 이상 → 완화)
+MIN_LLM_SCORE: "60"
 
 # 14. Scout Job LLM 최적화 설정
 #  # [Scout] LLM 실행 간격 (분) -> 4시간으로 변경
