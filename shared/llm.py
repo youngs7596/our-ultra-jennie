@@ -447,11 +447,16 @@ class ClaudeLLMProvider(BaseLLMProvider):
                 )
                 content = response.content[0].text
                 # JSON 파싱 (마크다운 코드블록 제거)
+                raw_content = content # 디버깅용 복사
                 if "```json" in content:
                     content = content.split("```json")[1].split("```")[0]
                 elif "```" in content:
                     content = content.split("```")[1].split("```")[0]
                 return json.loads(content.strip())
+            except json.JSONDecodeError as je:
+                logger.error(f"❌ [ClaudeProvider] JSON 파싱 실패: {je}")
+                logger.error(f"   (Raw Content): {raw_content[:500]}...") # 내용 확인
+                last_error = je
             except Exception as exc:
                 last_error = exc
                 logger.warning(f"⚠️ [ClaudeProvider] 모델 '{target_model}' 호출 실패: {exc}")
