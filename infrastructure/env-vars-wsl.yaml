@@ -93,7 +93,11 @@ SCHEDULER_SCOUT_JOB_ID: "scout-daily"  # jobs 테이블의 job_id와 일치해�
 MIN_LLM_SCORE: "70"
 
 # 14. Scout Job LLM 최적화 설정
-SCOUT_MIN_LLM_INTERVAL_MINUTES: "60"        # LLM 호출 최소 간격 (1시간)
+#  # [Scout] LLM 실행 간격 (분) -> 4시간으로 변경
+  SCOUT_MIN_LLM_INTERVAL_MINUTES: "240"
+  SCOUT_MAX_CANDIDATES_PHASE2: "5"     # LLM 호출 최소 간격 (1시간)
+SCHEDULER_QUEUE_NEWS_CRAWLER: "real.jobs.news-crawler"
 SCOUT_LLM_CACHE_TTL_MINUTES: "240"          # LLM 캐시 유효기간 (4시간) - 시장 변화 반영
 SCOUT_LLM_MAX_WORKERS: "4"                  # LLM 동시 호출 최대 수 (Claude Rate Limit 고려)
 SCOUT_PHASE2_MAX_ENTRIES: "50"              # Phase 2 진입 최대 종목 수 (상위 N개만)
+```

@@ -1457,8 +1457,10 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
         hunter_score = min(100, hunter_score + competitor_bonus)
         logger.info(f"   🎯 [경쟁사 수혜] {info['name']}({code}) +{competitor_bonus}점 가산 ({competitor_reason})")
     
-    # 통과 기준: 60점 이상
-    passed = hunter_score >= 60
+    # [v1.0] 정량+정성 하이브리드 점수
+    # [v4.1] 기준 상향 75점
+    passed = hunter_score >= 75
+    if hunter_score == 0: passed = False
     
     if passed:
         logger.info(f"   ✅ [v5 Hunter 통과] {info['name']}({code}) - Quant:{quant_result.total_score:.0f} → Hunter:{hunter_score}점")

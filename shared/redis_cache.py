@@ -196,6 +196,8 @@ def set_sentiment_score(
     stock_code: str, 
     score: int, 
     reason: str,
+    source_url: Optional[str] = None,
+    stock_name: Optional[str] = None,
     redis_client=None
 ) -> bool:
     """
@@ -207,6 +209,8 @@ def set_sentiment_score(
         stock_code: 종목 코드
         score: 감성 점수 (0-100)
         reason: 감성 분석 사유
+        source_url: 뉴스 원문 링크
+        stock_name: 종목명 (옵션)
         redis_client: 테스트용 Redis 클라이언트 (의존성 주입)
     
     Returns:
@@ -221,11 +225,15 @@ def set_sentiment_score(
     # 기존 점수 조회
     old_score = 50
     old_data_json = None
+    existing_url = None
+    existing_name = None
     try:
         old_data_json = r.get(key)
         if old_data_json:
             old_data = json.loads(old_data_json)
             old_score = old_data.get('score', 50)
+            existing_url = old_data.get('source_url')
+            existing_name = old_data.get('stock_name')
     except Exception:
         pass
 
@@ -241,6 +249,8 @@ def set_sentiment_score(
     data = {
         "score": round(final_score, 1),
         "reason": final_reason,
+        "source_url": source_url or existing_url, # URL은 최신꺼 우선, 없으면 기존꺼
+        "stock_name": stock_name or existing_name,
         "updated_at": datetime.now().isoformat()
     }
     
@@ -266,9 +276,9 @@ def get_sentiment_score(
         redis_client: 테스트용 Redis 클라이언트 (의존성 주입)
     
     Returns:
-        {'score': 50, 'reason': 'No Data'} (기본값)
+        {'score': 50, 'reason': 'No Data', 'source_url': None, 'stock_name': None} (기본값)
     """
-    default_result = {"score": 50, "reason": "데이터 없음 (중립)"}
+    default_result = {"score": 50, "reason": "데이터 없음 (중립)", "source_url": None, "stock_name": None}
     
     r = get_redis_connection(redis_client)
     if not r:

@@ -155,13 +155,22 @@ export function NewsPage() {
                         <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-jennie-gold/20 to-jennie-pink/20 flex items-center justify-center">
                           {getSentimentIcon(score)}
                         </div>
-                        <div>
-                          <h4 className="font-semibold">
-                            {stock?.stock_name || item.stock_code}
+                        <div
+                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => item.source_url && window.open(item.source_url, '_blank')}
+                          title={item.source_url ? "뉴스 원문 보기" : "링크 없음"}
+                        >
+                          <h4 className="font-semibold text-lg">
+                            {item.stock_name || stock?.stock_name || item.stock_code}
                           </h4>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {item.stock_code}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {item.stock_code}
+                            </p>
+                            {item.source_url && (
+                              <Newspaper className="w-3 h-3 text-jennie-gold opacity-50" />
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -215,8 +224,8 @@ export function NewsPage() {
             <div>
               <h4 className="font-semibold text-jennie-gold">뉴스 감성 분석이란?</h4>
               <p className="text-sm text-muted-foreground mt-1">
-                News Crawler가 수집한 뉴스를 Gemini-2.5-Flash가 실시간으로 분석하여 
-                0~100점 사이의 감성 점수를 산출합니다. 
+                News Crawler가 수집한 뉴스를 Gemini-2.5-Flash가 실시간으로 분석하여
+                0~100점 사이의 감성 점수를 산출합니다.
                 60점 이상은 긍정, 40점 이하는 부정으로 분류됩니다.
                 Buy Scanner는 이 점수를 활용하여 매수 결정에 반영합니다.
               </p>
