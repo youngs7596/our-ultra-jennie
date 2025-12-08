@@ -422,7 +422,7 @@ def process_sentiment_analysis(documents):
 
         # 2. Redis 저장 (Fast Hands용)
         try:
-            database.set_sentiment_score(stock_code, score, reason)
+            database.set_sentiment_score(stock_code, score, reason, source_url=news_link)
         except Exception as e:
             logger.warning(f"⚠️ [Sentiment] Redis 저장 실패 (Skip): {e}")
             continue

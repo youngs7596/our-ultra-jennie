@@ -673,31 +673,56 @@ async def get_news_sentiment_api(
                 parsed = json.loads(data)
                 return {
                     "stock_code": stock_code,
+                    "stock_name": parsed.get("stock_name"),
                     "sentiment_score": parsed.get("score"),
                     "reason": parsed.get("reason"),
+                    "source_url": parsed.get("source_url"),
                     "updated_at": parsed.get("updated_at"),
                 }
             return {
                 "stock_code": stock_code,
+                "stock_name": None,
                 "sentiment_score": None,
+                "reason": "데이터 없음",
+                "source_url": None,
             }
         else:
             # 전체 감성 점수 (상위 N개) - sentiment:* 키 조회
             keys = r.keys("sentiment:*")
             items = []
             import json
-            for key in keys[:limit]:
+            
+            # [Fix] 종목명 매핑을 위해 WatchList 조회 (Redis에 없을 경우 대비)
+            stock_names_map = {}
+            try:
+                with get_session() as session:
+                    # 간단히 모든 최근 종목 이름을 가져옴 (혹은 필요한 것만 in 절로 최적화 가능하지만 여기서 간단히)
+                    # 성능 이슈가 있다면 keys에서 code 추출 후 IN 쿼리 사용 권장
+                    w_list = session.query(WatchList.stock_code, WatchList.stock_name).all()
+                    for w in w_list:
+                        stock_names_map[w.stock_code] = w.stock_name
+            except Exception as e:
+                logger.warning(f"종목명 매핑 조회 실패: {e}")
+
+            for key in keys[:limit*2]: # Limit보다 넉넉히 조회 후 정렬
                 code = key.split(":")[-1] if isinstance(key, str) else key.decode().split(":")[-1]
                 data = r.get(key)
                 if data:
                     parsed = json.loads(data) if isinstance(data, str) else json.loads(data.decode())
+                    
+                    # Redis에 저장된 이름 사용, 없으면 DB 매핑 사용, 없으면 코드 사용
+                    s_name = parsed.get("stock_name") or stock_names_map.get(code) or code
+                    
                     items.append({
                         "stock_code": code,
+                        "stock_name": s_name,
                         "sentiment_score": parsed.get("score"),
                         "reason": parsed.get("reason"),
+                        "source_url": parsed.get("source_url"),
+                        "updated_at": parsed.get("updated_at")
                     })
             items.sort(key=lambda x: x["sentiment_score"] or 0, reverse=True)
-            return {"items": items}
+            return {"items": items[:limit]}
     except Exception as e:
         logger.error(f"뉴스 감성 조회 실패: {e}")
         return {"items": [], "error": str(e)}
