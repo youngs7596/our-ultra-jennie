@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+.pytest_cache/
+htmlcov/
+.coverage
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Docker build context exclusions - these cause permission issues
+observability/grafana/
+chroma_data/
+redis_data/
+scheduler_data/
+jenkins_home/
+
+# Logs and temporary files
+*.log
+*.txt
+scout_logs.txt
+
+# Documentation (not needed in Docker images)
+docs/
+README.md
+LICENSE
+
+# Tests (not needed in production images)
+tests/
+htmlcov/
+
+# Secrets (mounted as volumes, not copied)
+secrets.json
+secrets.example.json
+
+# Local data directories
+*.db
+*.sqlite
