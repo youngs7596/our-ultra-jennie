@@ -1,13 +1,14 @@
 """
-shared/database_commands.py - Agent 명령 관련 함수
+shared/database/commands.py - Agent 명령 관련 함수
 
 이 모듈은 AGENT_COMMANDS 테이블에서 App과 Agent 간 비동기 명령을 
 관리하는 함수들을 제공합니다.
+(기존 shared/database_commands.py 이동)
 """
 
 import json
 import logging
-from shared.database_base import _get_table_name, _is_mariadb
+from .core import _get_table_name, _is_mariadb
 
 logger = logging.getLogger(__name__)
 

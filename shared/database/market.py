@@ -1,20 +1,75 @@
 """
-shared/database_price.py
+shared/database/market.py
 
-주가/가격/펀더멘털 저장 및 조회 관련 유틸을 분리한 모듈입니다.
-기존 shared/database.py는 하위 호환을 위해 이 모듈을 import/re-export합니다.
+종목 마스터, 주가/펀더멘털 데이터, 뉴스 감성 저장 등
+시장 데이터(Market Data) 전반을 담당합니다.
+(기존 database_master.py + database_price.py + database_news.py + database_marketdata.py 일부 통합)
 """
 
 import logging
 from datetime import datetime
-from typing import List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
-from .database_base import _is_mariadb
+from .core import _get_table_name, _is_mariadb
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# [Master] 종목 마스터 조회
+# ============================================================================
+
+def get_stock_by_code(connection, stock_code: str) -> Optional[Dict]:
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT STOCK_CODE, STOCK_NAME, SECTOR
+        FROM STOCK_MASTER
+        WHERE STOCK_CODE = %s
+        LIMIT 1
+    """, [stock_code])
+    row = cursor.fetchone()
+    cursor.close()
+    
+    if not row:
+        return None
+    
+    if isinstance(row, dict):
+        return row
+    return {
+        "stock_code": row[0],
+        "stock_name": row[1],
+        "sector": row[2],
+    }
+
+
+def search_stock_by_name(connection, name: str) -> Optional[Dict]:
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT STOCK_CODE, STOCK_NAME, SECTOR
+        FROM STOCK_MASTER
+        WHERE STOCK_NAME = %s
+        LIMIT 1
+    """, [name])
+    row = cursor.fetchone()
+    cursor.close()
+    
+    if not row:
+        return None
+    
+    if isinstance(row, dict):
+        return row
+    return {
+        "stock_code": row[0],
+        "stock_name": row[1],
+        "sector": row[2],
+    }
+
+
+# ============================================================================
+# [Price] 주가/펀더멘털 조회 및 저장
+# ============================================================================
 
 def save_all_daily_prices(connection, all_daily_prices_params: List[dict]):
     """일봉 데이터 Bulk 저장 (MariaDB/Oracle 호환)"""
@@ -121,7 +176,7 @@ def update_all_stock_fundamentals(connection, all_fundamentals_params: List[dict
             cursor.close()
 
 
-def get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_PRICES_3Y"):
+def get_daily_prices(connection, stock_code: str, limit: int = 30, table_name: str = "STOCK_DAILY_PRICES_3Y") -> pd.DataFrame:
     cursor = connection.cursor()
     cursor.execute(f"""
         SELECT PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
@@ -142,7 +197,7 @@ def get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_P
         df = pd.DataFrame(rows, columns=[
             "PRICE_DATE", "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "CLOSE_PRICE", "VOLUME"
         ])
-    df = df.iloc[::-1]
+    df = df.iloc[::-1]  # 날짜 오름차순
     return df
 
 
@@ -154,6 +209,8 @@ def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, tabl
         return {}
     
     cursor = connection.cursor()
+    # MariaDB에서 리스트 파라미터 처리가 드라이버(PyMySQL/MySQLConnector)에 따라 다를 수 있어 안전하게 문자열 치환 사용
+    # *주의: SQL Injection 방지를 위해 stock_codes 내용 검증 필요하나, 내부 로직상 안전하다 가정
     placeholder = ','.join(['%s'] * len(stock_codes))
     cursor.execute(f"""
         SELECT STOCK_CODE, PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
@@ -175,6 +232,7 @@ def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, tabl
             code = row['STOCK_CODE']
             result[code].append(row)
         else:
+            # 튜플 인덱스 주의
             code = row[0]
             result[code].append({
                 "STOCK_CODE": row[0],
@@ -188,8 +246,79 @@ def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, tabl
     
     # dict -> DataFrame 변환 및 날짜 오름차순
     for code, items in result.items():
+        if not items:
+            continue
         df = pd.DataFrame(items)
         df = df.iloc[::-1]
         result[code] = df
     
     return result
+
+
+# ============================================================================
+# [News] 뉴스 감성 저장
+# ============================================================================
+
+def save_news_sentiment(connection, stock_code, title, score, reason, url, published_at):
+    """
+    뉴스 감성 분석 결과를 영구 저장합니다.
+    MariaDB/Oracle 하이브리드 지원.
+    """
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        
+        table_name = _get_table_name("NEWS_SENTIMENT")
+        
+        # 테이블 존재 여부 확인 (없으면 자동 생성)
+        try:
+            cursor.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
+        except Exception:
+            logger.warning(f"⚠️ 테이블 {table_name}이 없어 생성을 시도합니다.")
+            create_sql = f"""
+            CREATE TABLE {table_name} (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                STOCK_CODE VARCHAR(20) NOT NULL,
+                NEWS_TITLE VARCHAR(1000),
+                SENTIMENT_SCORE INT DEFAULT 50,
+                SENTIMENT_REASON VARCHAR(2000),
+                SOURCE_URL VARCHAR(2000),
+                PUBLISHED_AT DATETIME,
+                CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY UK_NEWS_URL (SOURCE_URL(500))
+            )
+            """
+            cursor.execute(create_sql)
+            connection.commit()
+            logger.info(f"✅ 테이블 {table_name} 생성 완료")
+
+        # 중복 URL 체크 (이미 저장된 뉴스면 Skip)
+        check_sql = f"SELECT 1 FROM {table_name} WHERE SOURCE_URL = %s"
+        cursor.execute(check_sql, [url])
+        if cursor.fetchone():
+            logger.debug(f"ℹ️ [DB] 이미 존재하는 뉴스입니다. (Skip): {title[:20]}...")
+            return
+
+        # published_at이 int timestamp인 경우 변환
+        if isinstance(published_at, int):
+            published_at_str = datetime.fromtimestamp(published_at).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            published_at_str = str(published_at)[:19]
+
+        insert_sql = f"""
+        INSERT INTO {table_name} 
+        (STOCK_CODE, NEWS_TITLE, SENTIMENT_SCORE, SENTIMENT_REASON, SOURCE_URL, PUBLISHED_AT)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_sql, [stock_code, title, score, reason, url, published_at_str])
+        
+        connection.commit()
+        logger.info(f"✅ [DB] 뉴스 감성 저장 완료: {stock_code} ({score}점)")
+        
+    except Exception as e:
+        logger.error(f"❌ [DB] 뉴스 감성 저장 실패: {e}")
+        if connection:
+            connection.rollback()
+    finally:
+        if cursor:
+            cursor.close()

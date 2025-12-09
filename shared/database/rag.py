@@ -1,12 +1,13 @@
 """
-shared/database_rag.py - RAG 캐시 관련 함수
+shared/database/rag.py - RAG 캐시 관련 함수
 
 이 모듈은 RAG_CACHE 테이블에서 RAG 컨텍스트를 조회/저장하는 함수들을 제공합니다.
+(기존 shared/database_rag.py 이동)
 """
 
 import logging
 from datetime import datetime, timezone, timedelta
-from shared.database_base import _is_mariadb
+from .core import _is_mariadb
 
 logger = logging.getLogger(__name__)
 
