@@ -485,6 +485,7 @@ TRADING_STOP_KEY = "trading:stop"
 TRADING_DRYRUN_KEY = "trading:dryrun"
 CONFIG_MIN_LLM_SCORE_KEY = "config:min_llm_score"
 CONFIG_MAX_BUY_PER_DAY_KEY = "config:max_buy_per_day"
+CONFIG_RISK_LEVEL_KEY = "config:risk_level"
 NOTIFICATION_MUTE_KEY = "notification:mute"
 
 
@@ -656,7 +657,8 @@ def set_config_value(
     
     key_map = {
         "min_llm_score": CONFIG_MIN_LLM_SCORE_KEY,
-        "max_buy_per_day": CONFIG_MAX_BUY_PER_DAY_KEY
+        "max_buy_per_day": CONFIG_MAX_BUY_PER_DAY_KEY,
+        "risk_level": CONFIG_RISK_LEVEL_KEY
     }
     
     key = key_map.get(config_name.lower())
@@ -699,7 +701,8 @@ def get_config_value(
     
     key_map = {
         "min_llm_score": CONFIG_MIN_LLM_SCORE_KEY,
-        "max_buy_per_day": CONFIG_MAX_BUY_PER_DAY_KEY
+        "max_buy_per_day": CONFIG_MAX_BUY_PER_DAY_KEY,
+        "risk_level": CONFIG_RISK_LEVEL_KEY
     }
     
     key = key_map.get(config_name.lower())

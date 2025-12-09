@@ -949,13 +949,42 @@ class CommandHandler:
             logger.error(f"가격 알림 목록 오류: {e}", exc_info=True)
             return f"❌ 가격 알림 목록 조회 실패: {e}"
 
-    
     # ============================================================================
-    # 설정 핸들러 (Phase 6에서 구현)
+    # 설정 핸들러
     # ============================================================================
     
     def _handle_risk(self, cmd: dict, dry_run: bool) -> str:
-        return "🚧 리스크 레벨 설정 기능은 Phase 6에서 구현 예정입니다."
+        """리스크 레벨 변경"""
+        args = cmd.get('args', [])
+        
+        valid_levels = ['conservative', 'moderate', 'aggressive']
+        level_descriptions = {
+            'conservative': '보수적 - 소액 분산 투자, 손절 빠름',
+            'moderate': '보통 - 균형 잡힌 매매',
+            'aggressive': '공격적 - 적극 매수, 손절 늦음'
+        }
+        
+        if not args:
+            current = redis_cache.get_config_value('risk_level', 'moderate')
+            desc = level_descriptions.get(current, '')
+            
+            return f"""⚙️ *현재 리스크 레벨*: {current}
+{desc}
+
+*변경 방법:*
+• `/risk conservative` - 보수적
+• `/risk moderate` - 보통
+• `/risk aggressive` - 공격적"""
+        
+        level = args[0].lower()
+        
+        if level not in valid_levels:
+            return f"❓ 유효한 레벨: conservative, moderate, aggressive"
+        
+        redis_cache.set_config_value('risk_level', level)
+        desc = level_descriptions.get(level, '')
+        
+        return f"✅ 리스크 레벨이 변경되었습니다.\n\n📊 {level}\n{desc}"
     
     def _handle_minscore(self, cmd: dict, dry_run: bool) -> str:
         """최소 LLM 점수 변경"""
