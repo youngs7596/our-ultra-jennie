@@ -67,26 +67,24 @@ from shared.redis_cache import (
     get_all_competitor_benefits,
     MARKET_REGIME_CACHE_KEY,
 )
+# core/base import (테이블 네이밍/초기화/타입 헬퍼)
+from shared.database_base import (
+    _is_mariadb,
+    _get_param_placeholder,
+    _get_table_name,
+    _is_sqlalchemy_ready,
+    init_connection_pool,
+)
+# portfolio CRUD 분리 모듈
+from shared.database_portfolio import (
+    get_active_watchlist,
+    save_to_watchlist,
+    get_active_portfolio,
+    record_trade,
+    get_daily_prices,
+)
 
 logger = logging.getLogger(__name__)
-
-# ============================================================================
-# DB 타입 헬퍼 함수
-# ============================================================================
-def _is_mariadb() -> bool:
-    """현재 DB 타입 확인 (항상 MariaDB)"""
-    return True
-
-def _get_param_placeholder(index: int = 1) -> str:
-    """DB 타입에 따른 파라미터 플레이스홀더 반환 (MariaDB: %s)"""
-    return "%s"
-
-
-# ============================================================================
-# [v4.1] Redis 함수들은 shared/redis_cache.py로 분리됨
-# 하위 호환성을 위해 이 파일 상단에서 re-export 중
-# ============================================================================
-
 
 # ============================================================================
 # Oracle DB: 뉴스 감성 저장
