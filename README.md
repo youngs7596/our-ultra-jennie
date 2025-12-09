@@ -299,6 +299,13 @@ docker compose run --rm scout-job python scripts/init_competitor_data.py
 
 ---
 
+## 🔧 리팩토링 진행 상황
+- `shared/database.py`를 도메인별 모듈로 분리 중이며, 기존 API는 wrapper/re-export로 유지합니다.
+- 가격·펀더멘털·일봉 관련 함수는 `shared/database_price.py`로 이동 완료 (`save_all_daily_prices`, `update_all_stock_fundamentals`, `get_daily_prices`, `get_daily_prices_batch`).
+- 상세 계획은 `docs/database-refactor-plan.md`를 참고하세요.
+
+---
+
 ## 📁 프로젝트 구조
 
 ```

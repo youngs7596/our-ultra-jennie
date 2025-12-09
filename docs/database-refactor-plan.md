@@ -5,6 +5,11 @@
 - 기존 API/함수 시그니처 유지: `database.py`는 얇은 re-export/wrapper만 남김
 - 도메인별 모듈로 구현 이동(책임 분리), 필요 없는/레거시 함수는 Deprecated 표시 후 후속 제거 준비
 
+## 최신 업데이트 (2025-12-09)
+- `database_price.py` 신설: `save_all_daily_prices`, `update_all_stock_fundamentals`, `get_daily_prices`, `get_daily_prices_batch` 구현 이동 완료
+- `database.py`는 위 4개 함수에 대해 thin wrapper/re-export 제공, 기존 레거시 버전은 `_legacy_get_daily_prices*`로 이름 정리
+- README에 진행 상황 및 분리된 모듈 안내 추가 예정
+
 ## 대상 함수(라인 기준: grep -n '^def ' shared/database.py | head -n 100)
 - 커넥션/풀: `_get_table_name`, `_is_sqlalchemy_ready`, `init_connection_pool`, `get_connection`, `release_connection`, `close_pool`, `is_pool_initialized`, `reset_pool`, `get_db_connection_context`, `get_db_connection`
 - 시세/펀더멘털/일봉: `save_all_daily_prices`, `update_all_stock_fundamentals`, `get_daily_prices`, `get_daily_prices_batch`
@@ -22,7 +27,7 @@
 - `database_news.py` (완료): 뉴스 감성 저장
 
 ### 추가 분리 (이번 단계)
-- `database_price.py`: `save_all_daily_prices`, `update_all_stock_fundamentals`, `get_daily_prices`, `get_daily_prices_batch`
+- (완료) `database_price.py`: `save_all_daily_prices`, `update_all_stock_fundamentals`, `get_daily_prices`, `get_daily_prices_batch`
 - `database_watchlist_legacy.py`: `save_to_watchlist_history`, `get_watchlist_history`, `get_all_stock_codes`, `_get_active_watchlist_legacy`
 - `database_trade_legacy.py`: `get_today_total_buy_amount*`, `get_today_buy_count*`, `get_trade_logs*`, `_get_active_portfolio_impl*`, `execute_trade_and_log*`, `get_trade_log`, `remove_from_portfolio`, `check_duplicate_order`, `get_stock_sector`
 - `database_config.py`: `get_config`, `get_all_config`, `set_config`, `upsert_rag_cache`, `get_rag_context_from_cache`, `get_rag_context_with_validation`, `was_traded_recently`, `get_recently_traded_stocks_batch`
