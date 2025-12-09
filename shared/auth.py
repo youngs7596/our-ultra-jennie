@@ -105,6 +105,10 @@ def get_secret(secret_id, project_id=None, use_cache=True):
     Returns:
         str: Secret 값. 실패 시 None.
     """
+    if not secret_id:
+        logger.warning("⚠️ get_secret: secret_id가 제공되지 않았습니다.")
+        return None
+
     cache_scope = project_id or "local"
     
     # 캐시 확인 (성능 최적화)
