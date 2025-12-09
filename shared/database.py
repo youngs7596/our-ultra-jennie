@@ -243,8 +243,11 @@ def close_pool():
 def is_pool_initialized():
     """연결 풀이 초기화되었는지 확인"""
     global pool
-    engine = sa_connection.get_engine()
-    return pool is not None or engine is not None
+    try:
+        engine = sa_connection.get_engine()
+        return pool is not None or engine is not None
+    except RuntimeError:
+        return False
 
 
 def reset_pool():
