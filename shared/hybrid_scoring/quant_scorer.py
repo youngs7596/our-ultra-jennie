@@ -57,6 +57,7 @@ from .quant_constants import (
     LONG_TERM_WEIGHTS as QC_LONG_TERM_WEIGHTS,
     GRADE_THRESHOLDS as QC_GRADE_THRESHOLDS,
     RANK_CUTOFF as QC_RANK_CUTOFF,
+    NEWS_TIME_EFFECT as QC_NEWS_TIME_EFFECT,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,15 +168,7 @@ class QuantScorer:
     LONG_TERM_WEIGHTS = QC_LONG_TERM_WEIGHTS
     GRADE_THRESHOLDS = QC_GRADE_THRESHOLDS
     RANK_CUTOFF = QC_RANK_CUTOFF
-    
-    # 뉴스 카테고리별 시간축 효과 (팩터 분석 결과) - 후속 분리 후보
-    NEWS_TIME_EFFECT = {
-        '수주': {'d5_win_rate': 0.437, 'd60_win_rate': 0.727, 'd60_return': 0.1936},
-        '실적': {'d5_win_rate': 0.484, 'd60_win_rate': 0.648, 'd60_return': 0.1403},
-        '배당': {'d5_win_rate': 0.376, 'd60_win_rate': 0.540, 'd60_return': 0.0998},
-        '신사업': {'d5_win_rate': 0.469, 'd60_win_rate': 0.571, 'd60_return': 0.0636},
-        'M&A': {'d5_win_rate': 0.483, 'd60_win_rate': 0.571, 'd60_return': 0.0795},
-    }
+    NEWS_TIME_EFFECT = QC_NEWS_TIME_EFFECT
     
     def __init__(self, db_conn=None, market_regime: str = 'SIDEWAYS', 
                  strategy_mode: StrategyMode = StrategyMode.DUAL):

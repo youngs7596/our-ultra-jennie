@@ -69,3 +69,12 @@ RANK_CUTOFF = {
     "value": 0.4,
     "quality": 0.3,
 }
+
+# 뉴스 카테고리별 시간축 효과 (팩터 분석 결과)
+NEWS_TIME_EFFECT = {
+    "수주": {"d5_win_rate": 0.437, "d60_win_rate": 0.727, "d60_return": 0.1936},
+    "실적": {"d5_win_rate": 0.484, "d60_win_rate": 0.648, "d60_return": 0.1403},
+    "배당": {"d5_win_rate": 0.376, "d60_win_rate": 0.540, "d60_return": 0.0998},
+    "신사업": {"d5_win_rate": 0.469, "d60_win_rate": 0.571, "d60_return": 0.0636},
+    "M&A": {"d5_win_rate": 0.483, "d60_win_rate": 0.571, "d60_return": 0.0795},
+}
