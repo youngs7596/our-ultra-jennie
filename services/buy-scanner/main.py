@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import shared.auth as auth
 import shared.database as database
+import shared.redis_cache as redis_cache  # [v3.6] Trading Flag 체크용
 from shared.kis.client import KISClient as KIS_API
 from shared.kis.gateway_client import KISGatewayClient
 from shared.config import ConfigManager
@@ -153,6 +154,17 @@ def _perform_scan(trigger_source: str = "manual") -> dict:
     """Scanner 실행 및 RabbitMQ 발행 (공용 로직)"""
     if not scanner or not rabbitmq_publisher:
         raise RuntimeError("Service not initialized")
+    
+    # [v3.6] Telegram 명령으로 설정된 Trading Flag 체크
+    if redis_cache.is_trading_stopped():
+        logger.warning("🛑 긴급 중지 상태입니다. 스캔을 건너뜁니다.")
+        return {"status": "trading_stopped", "reason": "Emergency stop active"}
+    
+    if redis_cache.is_trading_paused():
+        pause_info = redis_cache.get_trading_flag('pause')
+        reason = pause_info.get('reason', '사용자 요청')
+        logger.warning(f"⏸️ 매수 일시 중지 상태입니다. 스캔을 건너뜁니다. (사유: {reason})")
+        return {"status": "trading_paused", "reason": reason}
 
     # 장 운영 여부 확인 (가능한 경우)
     try:

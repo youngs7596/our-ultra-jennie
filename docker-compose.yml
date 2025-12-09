@@ -474,6 +474,62 @@ services:
         condition: service_healthy
       chromadb:
         condition: service_healthy
+
+  # ============================================================================
+  # 5.5. Command Handler (Telegram 명령 처리)
+  # ============================================================================
+  command-handler:
+    build:
+      context: .
+      dockerfile: services/command-handler/Dockerfile
+    profiles: [ "real" ]
+    env_file:
+      - infrastructure/env-vars-wsl.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+    environment:
+      - PORT=8089
+      - SECRETS_FILE=/app/config/secrets.json
+      - AUTO_START_POLLING=true
+      - POLL_INTERVAL_SECONDS=5
+    network_mode: host
+    restart: unless-stopped
+    labels:
+      - app=command-handler
+      - stack=my-ultra-jennie
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8089/health')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  command-handler-mock:
+    build:
+      context: .
+      dockerfile: services/command-handler/Dockerfile
+    profiles: [ "mock" ]
+    env_file:
+      - infrastructure/env-vars-mock.yaml
+    volumes:
+      - ./secrets.json:/app/config/secrets.json:ro
+    environment:
+      - PORT=9089
+      - SECRETS_FILE=/app/config/secrets.json
+      - AUTO_START_POLLING=true
+      - POLL_INTERVAL_SECONDS=5
+      - KIS_GATEWAY_URL=http://localhost:9080
+    network_mode: host
+    labels:
+      - app=command-handler-mock
+      - stack=my-ultra-jennie
+    depends_on:
+      redis:
+        condition: service_healthy
+
   # ============================================================================
   # 6. Price Monitor (가격 모니터링)
   # ============================================================================
