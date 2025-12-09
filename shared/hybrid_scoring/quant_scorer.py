@@ -23,6 +23,7 @@ Scout v1.0 QuantScorer - 정량 점수 계산 엔진 (Dual Track)
 import logging
 import pandas as pd
 import numpy as np
+from enum import Enum
 from typing import Dict, Tuple, Optional, List
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field

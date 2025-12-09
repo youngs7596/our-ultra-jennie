@@ -276,7 +276,7 @@ class TestClaudeLLMProvider:
     @patch('shared.auth.get_secret')
     def test_init_success(self, mock_get_secret, mock_safety_settings):
         """초기화 성공"""
-        from shared.llm import ClaudeLLMProvider
+        from shared.llm_providers import ClaudeLLMProvider
         
         mock_get_secret.return_value = 'fake-claude-api-key'
         
@@ -292,7 +292,7 @@ class TestClaudeLLMProvider:
     @patch('shared.auth.get_secret')
     def test_generate_json_success(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """generate_json 성공"""
-        from shared.llm import ClaudeLLMProvider
+        from shared.llm_providers import ClaudeLLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         
@@ -321,7 +321,7 @@ class TestClaudeLLMProvider:
     @patch('shared.auth.get_secret')
     def test_generate_json_with_markdown(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """마크다운 코드블록 제거"""
-        from shared.llm import ClaudeLLMProvider
+        from shared.llm_providers import ClaudeLLMProvider
         
         provider = object.__new__(ClaudeLLMProvider)
         provider.safety_settings = mock_safety_settings
