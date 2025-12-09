@@ -2283,3 +2283,232 @@ def check_duplicate_order(connection, stock_code, trade_type, time_window_minute
         return False
     finally:
         if cursor: cursor.close()
+
+
+# ============================================================================
+# [v3.6] 종목 검색 함수 (Telegram 명령 처리용)
+# ============================================================================
+
+def get_stock_by_code(connection, stock_code: str) -> dict:
+    """
+    종목 코드로 종목 정보 조회
+    
+    Args:
+        connection: DB 연결
+        stock_code: 종목 코드 (예: "005930")
+    
+    Returns:
+        {'stock_code': '005930', 'stock_name': '삼성전자', ...} 또는 None
+    """
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        
+        # STOCK_MASTER 우선 조회
+        sql = """
+        SELECT STOCK_CODE, STOCK_NAME, SECTOR_KOSPI200, MARKET_CAP
+        FROM STOCK_MASTER
+        WHERE STOCK_CODE = %s AND IS_ACTIVE = 1
+        """
+        cursor.execute(sql, [stock_code])
+        row = cursor.fetchone()
+        
+        if row:
+            if isinstance(row, dict):
+                return {
+                    'stock_code': row.get('STOCK_CODE'),
+                    'stock_name': row.get('STOCK_NAME'),
+                    'sector': row.get('SECTOR_KOSPI200'),
+                    'market_cap': row.get('MARKET_CAP')
+                }
+            else:
+                return {
+                    'stock_code': row[0],
+                    'stock_name': row[1],
+                    'sector': row[2],
+                    'market_cap': row[3]
+                }
+        
+        # WatchList에서 조회 (Fallback)
+        sql = """
+        SELECT STOCK_CODE, STOCK_NAME
+        FROM WatchList
+        WHERE STOCK_CODE = %s
+        """
+        cursor.execute(sql, [stock_code])
+        row = cursor.fetchone()
+        
+        if row:
+            if isinstance(row, dict):
+                return {
+                    'stock_code': row.get('STOCK_CODE'),
+                    'stock_name': row.get('STOCK_NAME')
+                }
+            else:
+                return {
+                    'stock_code': row[0],
+                    'stock_name': row[1]
+                }
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ DB: get_stock_by_code 실패! (에러: {e})")
+        return None
+    finally:
+        if cursor: cursor.close()
+
+
+def search_stock_by_name(connection, stock_name: str) -> dict:
+    """
+    종목명으로 종목 검색 (부분 일치)
+    
+    Args:
+        connection: DB 연결
+        stock_name: 종목명 (예: "삼성전자")
+    
+    Returns:
+        {'stock_code': '005930', 'stock_name': '삼성전자', ...} 또는 None
+    """
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        
+        # 정확한 이름 매칭 우선
+        sql = """
+        SELECT STOCK_CODE, STOCK_NAME, SECTOR_KOSPI200, MARKET_CAP
+        FROM STOCK_MASTER
+        WHERE STOCK_NAME = %s AND IS_ACTIVE = 1
+        """
+        cursor.execute(sql, [stock_name])
+        row = cursor.fetchone()
+        
+        if row:
+            if isinstance(row, dict):
+                return {
+                    'stock_code': row.get('STOCK_CODE'),
+                    'stock_name': row.get('STOCK_NAME'),
+                    'sector': row.get('SECTOR_KOSPI200'),
+                    'market_cap': row.get('MARKET_CAP')
+                }
+            else:
+                return {
+                    'stock_code': row[0],
+                    'stock_name': row[1],
+                    'sector': row[2],
+                    'market_cap': row[3]
+                }
+        
+        # 부분 일치 검색 (LIKE)
+        sql = """
+        SELECT STOCK_CODE, STOCK_NAME, SECTOR_KOSPI200, MARKET_CAP
+        FROM STOCK_MASTER
+        WHERE STOCK_NAME LIKE %s AND IS_ACTIVE = 1
+        ORDER BY MARKET_CAP DESC
+        LIMIT 1
+        """
+        cursor.execute(sql, [f"%{stock_name}%"])
+        row = cursor.fetchone()
+        
+        if row:
+            if isinstance(row, dict):
+                return {
+                    'stock_code': row.get('STOCK_CODE'),
+                    'stock_name': row.get('STOCK_NAME'),
+                    'sector': row.get('SECTOR_KOSPI200'),
+                    'market_cap': row.get('MARKET_CAP')
+                }
+            else:
+                return {
+                    'stock_code': row[0],
+                    'stock_name': row[1],
+                    'sector': row[2],
+                    'market_cap': row[3]
+                }
+        
+        # WatchList에서 검색 (Fallback)
+        sql = """
+        SELECT STOCK_CODE, STOCK_NAME
+        FROM WatchList
+        WHERE STOCK_NAME LIKE %s
+        LIMIT 1
+        """
+        cursor.execute(sql, [f"%{stock_name}%"])
+        row = cursor.fetchone()
+        
+        if row:
+            if isinstance(row, dict):
+                return {
+                    'stock_code': row.get('STOCK_CODE'),
+                    'stock_name': row.get('STOCK_NAME')
+                }
+            else:
+                return {
+                    'stock_code': row[0],
+                    'stock_name': row[1]
+                }
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ DB: search_stock_by_name 실패! (에러: {e})")
+        return None
+    finally:
+        if cursor: cursor.close()
+
+
+def get_today_trades(connection) -> list:
+    """
+    오늘 체결된 거래 내역 조회
+    
+    Args:
+        connection: DB 연결
+    
+    Returns:
+        거래 내역 리스트
+    """
+    trades = []
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        tradelog_table = _get_table_name("TradeLog")
+        
+        sql = f"""
+        SELECT LOG_ID, STOCK_CODE, TRADE_TYPE, QUANTITY, PRICE, REASON, TRADE_TIMESTAMP
+        FROM {tradelog_table}
+        WHERE DATE(TRADE_TIMESTAMP) = CURDATE()
+        ORDER BY TRADE_TIMESTAMP DESC
+        """
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        
+        for row in rows:
+            if isinstance(row, dict):
+                trades.append({
+                    'log_id': row.get('LOG_ID'),
+                    'stock_code': row.get('STOCK_CODE'),
+                    'trade_type': row.get('TRADE_TYPE'),
+                    'quantity': row.get('QUANTITY'),
+                    'price': row.get('PRICE'),
+                    'reason': row.get('REASON'),
+                    'trade_timestamp': row.get('TRADE_TIMESTAMP')
+                })
+            else:
+                trades.append({
+                    'log_id': row[0],
+                    'stock_code': row[1],
+                    'trade_type': row[2],
+                    'quantity': row[3],
+                    'price': row[4],
+                    'reason': row[5],
+                    'trade_timestamp': row[6]
+                })
+        
+        logger.debug(f"✅ DB: 오늘 거래 {len(trades)}건 조회")
+        return trades
+        
+    except Exception as e:
+        logger.error(f"❌ DB: get_today_trades 실패! (에러: {e})")
+        return []
+    finally:
+        if cursor: cursor.close()
