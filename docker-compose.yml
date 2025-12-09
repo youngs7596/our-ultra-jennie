@@ -804,18 +804,15 @@ services:
       context: .
       dockerfile: services/dashboard-v2/backend/Dockerfile
     profiles: [ "real" ]
-    ports:
-      - "8090:8090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
     env_file:
       - infrastructure/env-vars-wsl.yaml
     environment:
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-here}
-      - REDIS_URL=redis://host.docker.internal:6379/0
-      - KIS_GATEWAY_URL=http://host.docker.internal:8080
+      - REDIS_URL=redis://localhost:6379/0
+      - KIS_GATEWAY_URL=http://localhost:8080
       - SECRETS_FILE=/app/config/secrets.json
-      - MARIADB_HOST=host.docker.internal
+      - MARIADB_HOST=127.0.0.1
     volumes:
       - ./secrets.json:/app/config/secrets.json:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -828,8 +825,6 @@ services:
       timeout: 10s
       retries: 3
     restart: always
-    networks:
-      - msa-network
     labels:
       - app=dashboard-v2-backend
       - stack=my-ultra-jennie
@@ -842,10 +837,7 @@ services:
         - VITE_API_URL=/api
         - VITE_API_URL=/api
     profiles: [ "real" ]
-    ports:
-      - "80:80"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
     depends_on:
       dashboard-v2-backend:
         condition: service_healthy
@@ -855,8 +847,6 @@ services:
       timeout: 10s
       retries: 3
     restart: always
-    networks:
-      - msa-network
     labels:
       - app=dashboard-v2-frontend
       - stack=my-ultra-jennie
