@@ -74,8 +74,8 @@ def init_connection_pool(
     )
 
     sa_connection.ensure_engine_initialized(
-        pool_size=min_pool_size,
-        max_overflow=max(0, max_pool_size - min_pool_size),
+        min_sessions=min_pool_size,
+        max_sessions=max_pool_size,
     )
 
     pool = sa_connection.get_engine()
