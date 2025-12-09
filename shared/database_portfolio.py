@@ -21,15 +21,15 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 def get_active_watchlist(connection) -> Dict[str, Dict]:
     cursor = connection.cursor()
-    cursor.execute("SELECT CODE, NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON FROM WatchList WHERE IS_TRADABLE = 1")
+    cursor.execute("SELECT STOCK_CODE, STOCK_NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON FROM WatchList WHERE IS_TRADABLE = 1")
     rows = cursor.fetchall()
     cursor.close()
     
     watchlist = {}
     for row in rows:
         if isinstance(row, dict):
-            code = row.get('CODE') or row.get('code')
-            name = row.get('NAME') or row.get('name')
+            code = row.get('STOCK_CODE') or row.get('stock_code')
+            name = row.get('STOCK_NAME') or row.get('stock_name')
             is_tradable = row.get('IS_TRADABLE', True)
             llm_score = row.get('LLM_SCORE', None)
             llm_reason = row.get('LLM_REASON', None)
@@ -60,10 +60,10 @@ def save_to_watchlist(connection, candidates: List[Dict]):
         llm_reason = c.get('llm_reason', '')
         
         cursor.execute(f"""
-            INSERT INTO {table_name} (CODE, NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON)
+            INSERT INTO {table_name} (STOCK_CODE, STOCK_NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON)
             VALUES (%s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-                NAME = VALUES(NAME),
+                STOCK_NAME = VALUES(STOCK_NAME),
                 IS_TRADABLE = VALUES(IS_TRADABLE),
                 LLM_SCORE = VALUES(LLM_SCORE),
                 LLM_REASON = VALUES(LLM_REASON)

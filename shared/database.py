@@ -441,16 +441,17 @@ def get_stock_sector(connection, stock_code: str):
         cursor = connection.cursor()
         
         if _is_mariadb():
-            sql = "SELECT SECTOR FROM WatchList WHERE STOCK_CODE = %s"
+            # [Fix] WatchList -> STOCK_MASTER (INDUSTRY_NAME)
+            sql = "SELECT INDUSTRY_NAME FROM STOCK_MASTER WHERE STOCK_CODE = %s"
             cursor.execute(sql, (stock_code,))
         else:
-            sql = "SELECT SECTOR FROM WatchList WHERE STOCK_CODE = :1"
+            sql = "SELECT INDUSTRY_NAME FROM STOCK_MASTER WHERE STOCK_CODE = :1"
             cursor.execute(sql, [stock_code])
         
         result = cursor.fetchone()
         
         if result:
-            sector = result['SECTOR'] if isinstance(result, dict) else result[0]
+            sector = result['INDUSTRY_NAME'] if isinstance(result, dict) else result[0]
             if sector:
                 logger.info(f"✅ DB: {stock_code} 섹터 조회 성공 → {sector}")
                 return sector
