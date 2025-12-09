@@ -80,78 +80,32 @@ from shared.database_portfolio import (
     get_active_watchlist,
     save_to_watchlist,
     get_active_portfolio,
-    record_trade,
-    get_daily_prices,
 )
+from shared.database_tradelog import record_trade, get_today_trades
+from shared.database_marketdata import get_daily_prices
+from shared.database_price import (
+    save_all_daily_prices,
+    update_all_stock_fundamentals as _price_update_all_stock_fundamentals,
+    get_daily_prices as _price_get_daily_prices,
+    get_daily_prices_batch as _price_get_daily_prices_batch,
+)
+from shared.database_master import get_stock_by_code, search_stock_by_name
+from shared.database_news import save_news_sentiment
 
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-# Oracle DB: 뉴스 감성 저장
-# ============================================================================
-def save_news_sentiment(connection, stock_code, title, score, reason, url, published_at):
-    """
-    [v3.8] 뉴스 감성 분석 결과를 영구 저장합니다.
-    MariaDB/Oracle 하이브리드 지원 (Claude Opus 4.5)
-    """
-    cursor = None
-    try:
-        cursor = connection.cursor()
-        
-        # 테이블 이름 매핑 (Mock 모드 대응)
-        table_name = _get_table_name("NEWS_SENTIMENT")
-        
-        # 테이블 존재 여부 확인 (없으면 자동 생성)
-        # MariaDB: LIMIT 1 사용
-        try:
-            cursor.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
-        except Exception:
-            logger.warning(f"⚠️ 테이블 {table_name}이 없어 생성을 시도합니다.")
-            create_sql = f"""
-            CREATE TABLE {table_name} (
-                ID INT AUTO_INCREMENT PRIMARY KEY,
-                STOCK_CODE VARCHAR(20) NOT NULL,
-                NEWS_TITLE VARCHAR(1000),
-                SENTIMENT_SCORE INT DEFAULT 50,
-                SENTIMENT_REASON VARCHAR(2000),
-                SOURCE_URL VARCHAR(2000),
-                PUBLISHED_AT DATETIME,
-                CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY UK_NEWS_URL (SOURCE_URL(500))
-            )
-            """
-            cursor.execute(create_sql)
-            connection.commit()
-            logger.info(f"✅ 테이블 {table_name} 생성 완료")
 
-        # 중복 URL 체크 (이미 저장된 뉴스면 Skip)
-        check_sql = f"SELECT 1 FROM {table_name} WHERE SOURCE_URL = %s"
-        cursor.execute(check_sql, [url])
-        if cursor.fetchone():
-            logger.debug(f"ℹ️ [DB] 이미 존재하는 뉴스입니다. (Skip): {title[:20]}...")
-            return
+# Thin wrappers to new price module (API 호환용)
+def update_all_stock_fundamentals(connection, all_fundamentals_params):
+    return _price_update_all_stock_fundamentals(connection, all_fundamentals_params)
 
-        # published_at이 int timestamp인 경우 변환
-        if isinstance(published_at, int):
-            published_at_str = datetime.fromtimestamp(published_at).strftime('%Y-%m-%d %H:%M:%S')
-        else:
-            published_at_str = str(published_at)[:19]
 
-        insert_sql = f"""
-        INSERT INTO {table_name} 
-        (STOCK_CODE, NEWS_TITLE, SENTIMENT_SCORE, SENTIMENT_REASON, SOURCE_URL, PUBLISHED_AT)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(insert_sql, [stock_code, title, score, reason, url, published_at_str])
-        
-        connection.commit()
-        logger.info(f"✅ [DB] 뉴스 감성 저장 완료: {stock_code} ({score}점)")
-        
-    except Exception as e:
-        logger.error(f"❌ [DB] 뉴스 감성 저장 실패: {e}")
-        if connection: connection.rollback()
-    finally:
-        if cursor: cursor.close()
+def get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_PRICES_3Y"):
+    return _price_get_daily_prices(connection, stock_code, limit=limit, table_name=table_name)
+
+
+def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, table_name: str = "STOCK_DAILY_PRICES_3Y"):
+    return _price_get_daily_prices_batch(connection, stock_codes, limit=limit, table_name=table_name)
 
 
 # ============================================================================
@@ -383,103 +337,6 @@ def get_db_connection(db_user=None, db_password=None, db_service_name=None, wall
     except Exception as e:
         logger.error(f"❌ DB: MariaDB 연결 실패! (에러: {e})")
         return None
-
-# --- (save_all_daily_prices, update_all_stock_fundamentals, save_to_watchlist - MariaDB/Oracle 호환) ---
-def save_all_daily_prices(connection, all_daily_prices_params):
-    """일봉 데이터 Bulk 저장 (MariaDB/Oracle 호환)"""
-    cursor = None
-    try:
-        cursor = connection.cursor()
-        
-        if _is_mariadb():
-            # MariaDB: INSERT ... ON DUPLICATE KEY UPDATE
-            sql = """
-            INSERT INTO STOCK_DAILY_PRICES (STOCK_CODE, PRICE_DATE, CLOSE_PRICE, HIGH_PRICE, LOW_PRICE)
-            VALUES (%s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                CLOSE_PRICE = VALUES(CLOSE_PRICE),
-                HIGH_PRICE = VALUES(HIGH_PRICE),
-                LOW_PRICE = VALUES(LOW_PRICE)
-            """
-            # 파라미터 변환: dict -> tuple
-            insert_data = []
-            for p in all_daily_prices_params:
-                insert_data.append((
-                    p.get('p_code', p.get('stock_code')),
-                    p.get('p_date', p.get('price_date')),
-                    p.get('p_price', p.get('close_price')),
-                    p.get('p_high', p.get('high_price')),
-                    p.get('p_low', p.get('low_price'))
-                ))
-            cursor.executemany(sql, insert_data)
-        else:
-            # Oracle: MERGE
-            sql_merge = """
-            MERGE /*+ NO_PARALLEL */ INTO STOCK_DAILY_PRICES t
-            USING (SELECT TO_DATE(:p_date, 'YYYY-MM-DD') AS price_date, :p_code AS stock_code, 
-                          :p_price AS close_price, :p_high AS high_price, :p_low AS low_price FROM DUAL) s
-            ON (t.STOCK_CODE = s.stock_code AND t.PRICE_DATE = s.price_date)
-            WHEN MATCHED THEN
-                UPDATE SET t.CLOSE_PRICE = s.close_price, t.HIGH_PRICE = s.high_price, t.LOW_PRICE = s.low_price
-            WHEN NOT MATCHED THEN
-                INSERT (STOCK_CODE, PRICE_DATE, CLOSE_PRICE, HIGH_PRICE, LOW_PRICE)
-                VALUES (s.stock_code, s.price_date, s.close_price, s.high_price, s.low_price)
-            """
-            cursor.executemany(sql_merge, all_daily_prices_params)
-        
-        connection.commit()
-        logger.info(f"✅ DB: 모든 종목의 일봉 데이터 {len(all_daily_prices_params)}건 Bulk 저장 완료.")
-    except Exception as e:
-        logger.error(f"❌ DB: 모든 종목 일봉 데이터 Bulk 저장 실패! (에러: {e})")
-        if connection: connection.rollback()
-    finally:
-        if cursor: cursor.close()
-        
-def update_all_stock_fundamentals(connection, all_fundamentals_params):
-    """펀더멘털 데이터 Bulk 업데이트 (MariaDB/Oracle 호환)"""
-    cursor = None
-    try:
-        cursor = connection.cursor()
-        now = datetime.now(timezone.utc)
-        
-        if _is_mariadb():
-            # MariaDB: UPDATE 문 사용
-            sql = """
-            UPDATE WatchList 
-            SET PER = %s, PBR = %s, MARKET_CAP = %s, UPDATED_AT = %s
-            WHERE STOCK_CODE = %s
-            """
-            params_to_run = [
-                (p['per'], p['pbr'], p['market_cap'], now, p['code'])
-                for p in all_fundamentals_params
-            ]
-            cursor.executemany(sql, params_to_run)
-        else:
-            # Oracle: MERGE
-            sql_merge = """
-            MERGE INTO WatchList t
-            USING (SELECT :p_code AS stock_code FROM dual) s
-            ON (t.STOCK_CODE = s.stock_code)
-            WHEN MATCHED THEN
-                UPDATE SET
-                    t.PER = :p_per,
-                    t.PBR = :p_pbr,
-                    t.MARKET_CAP = :p_market_cap,
-                    t.UPDATED_AT = SYSTIMESTAMP
-            """
-            params_to_run = [
-                {'p_code': p['code'], 'p_per': p['per'], 'p_pbr': p['pbr'], 'p_market_cap': p['market_cap']}
-                for p in all_fundamentals_params
-            ]
-            cursor.executemany(sql_merge, params_to_run)
-        
-        connection.commit()
-        logger.info(f"✅ DB: 모든 종목의 펀더멘털 {len(all_fundamentals_params)}건 Bulk 업데이트 완료.")
-    except Exception as e:
-        logger.error(f"❌ DB: 모든 종목 펀더멘털 데이터 Bulk 업데이트 실패! (에러: {e})")
-        if connection: connection.rollback()
-    finally:
-        if cursor: cursor.close()
 
 def save_to_watchlist(connection, candidates_to_save):
     """
@@ -801,7 +658,7 @@ def get_all_stock_codes(connection):
         return []
     finally:
         if cursor: cursor.close()
-def get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_PRICES_3Y"):
+def _legacy_get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_PRICES_3Y"):
     """
     특정 종목의 일봉 데이터를 조회합니다. (SQLAlchemy 사용)
     
@@ -871,7 +728,7 @@ def get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_P
         logger.error(f"❌ DB: get_daily_prices ({stock_code}) 실패! (에러: {e})")
         return pd.DataFrame()
 
-def get_daily_prices_batch(connection, stock_codes: list, limit=120, table_name="STOCK_DAILY_PRICES_3Y"):
+def _legacy_get_daily_prices_batch(connection, stock_codes: list, limit=120, table_name="STOCK_DAILY_PRICES_3Y"):
     """
     여러 종목의 일봉 데이터를 한 번에 조회합니다. (SQLAlchemy 사용)
     
