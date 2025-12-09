@@ -24,10 +24,9 @@ COPY services/command-handler/*.py services/command-handler/requirements.txt /ap
 # 의존성 설치
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 환경 변수
+# 환경 변수 (docker-compose에서 오버라이드됨)
 ENV PORT=8080
 ENV PYTHONPATH=/app
 
-# Gunicorn 실행
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "600", "--workers", "1", "main:app"]
-
+# Gunicorn 실행 - PORT 환경변수 사용
+CMD gunicorn --bind 0.0.0.0:${PORT} --timeout 600 --workers 1 main:app
