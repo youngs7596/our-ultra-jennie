@@ -2,7 +2,6 @@
 # Version: v3.6
 # Command Handler - Telegram 명령 처리 로직
 
-import time
 import logging
 import sys
 import os
@@ -16,6 +15,11 @@ import shared.database as database
 import shared.redis_cache as redis_cache
 from shared.notification import TelegramBot
 from shared.rabbitmq import RabbitMQPublisher
+from .limits import (
+    is_rate_limited,
+    check_and_increment_manual_trade_limit,
+)
+from .messages import HELP_TEXT, stop_confirm_message
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +163,7 @@ class CommandHandler:
             return
         
         # 레이트 리미트 체크 (기본 5초)
-        if self._is_rate_limited(chat_id):
+        if is_rate_limited(chat_id, self.min_command_interval):
             wait_msg = f"⏳ 명령이 너무 빠릅니다. {self.min_command_interval}초 후 다시 시도하세요."
             self.telegram_bot.reply(chat_id, wait_msg)
             return
@@ -197,7 +201,7 @@ class CommandHandler:
         
         # 확인 키워드 필요
         if not args or args[0] not in ['확인', '긴급']:
-            return "⚠️ 긴급 중지 명령입니다.\n\n모든 매수/매도가 중단됩니다.\n확인하려면 `/stop 확인`을 입력하세요."
+            return stop_confirm_message()
         
         redis_cache.set_trading_flag('stop', True, reason='긴급 중지')
         redis_cache.set_trading_flag('pause', True, reason='긴급 중지')
@@ -397,7 +401,7 @@ class CommandHandler:
         
         try:
             # 일일 수동 거래 횟수 제한
-            limit_error = self._check_manual_trade_limit(cmd)
+            limit_error = check_and_increment_manual_trade_limit(cmd.get('chat_id'), self.manual_trade_daily_limit)
             if limit_error:
                 return limit_error
             
@@ -505,7 +509,7 @@ class CommandHandler:
         
         try:
             # 일일 수동 거래 횟수 제한
-            limit_error = self._check_manual_trade_limit(cmd)
+            limit_error = check_and_increment_manual_trade_limit(cmd.get('chat_id'), self.manual_trade_daily_limit)
             if limit_error:
                 return limit_error
             
@@ -1044,17 +1048,7 @@ class CommandHandler:
     
     def _handle_help(self, cmd: dict, dry_run: bool) -> str:
         """도움말"""
-        return """📚 *Ultra Jennie 명령어 (24개)*
-
-_(매수/매도는 실행 서비스로 큐 전송 후 처리됩니다)_ 
-
-*매매 제어*: /pause /resume /stop 확인 /dryrun on|off
-*수동 매매*: /buy 종목 [수량] /sell 종목 [수량|전량] /sellall 확인
-*관심종목*: /watch 종목 /unwatch 종목 /watchlist
-*조회*: /status /portfolio /pnl /balance /price 종목
-*알림*: /mute 분 /unmute /alert 종목 가격 /alerts
-*설정*: /risk conservative|moderate|aggressive /minscore 점수 /maxbuy 횟수 /config
-*도움말*: /help /help 명령어"""
+        return HELP_TEXT
     
     # ============================================================================
     # 유틸리티
@@ -1083,41 +1077,3 @@ _(매수/매도는 실행 서비스로 큐 전송 후 처리됩니다)_
             logger.error(f"종목 검색 오류: {e}")
             return (None, None)
 
-    # ============================================================================
-    # 보호 로직 (Rate limiting, 일일 수동 거래 제한)
-    # ============================================================================
-    def _is_rate_limited(self, chat_id: Optional[int]) -> bool:
-        """명령 최소 간격 제한"""
-        if chat_id is None:
-            return False
-        r = redis_cache.get_redis_connection()
-        if not r:
-            return False
-        key = f"telegram:rl:{chat_id}"
-        try:
-            last_ts = r.get(key)
-            now = int(time.time())
-            if last_ts and now - int(last_ts) < self.min_command_interval:
-                return True
-            r.setex(key, self.min_command_interval, now)
-        except Exception:
-            return False
-        return False
-
-    def _check_manual_trade_limit(self, cmd: dict) -> Optional[str]:
-        """일일 수동 거래 횟수 제한을 체크하고 카운트 증가"""
-        chat_id = cmd.get('chat_id')
-        if chat_id is None:
-            return None
-        r = redis_cache.get_redis_connection()
-        if not r:
-            return None
-        key = f"telegram:manual_trades:{datetime.now().strftime('%Y%m%d')}:{chat_id}"
-        try:
-            count = int(r.get(key) or 0)
-            if count >= self.manual_trade_daily_limit:
-                return f"⛔ 일일 수동 거래 한도를 초과했습니다. (최대 {self.manual_trade_daily_limit}건)"
-            r.setex(key, 86400, count + 1)
-        except Exception:
-            return None
-        return None

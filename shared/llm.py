@@ -53,97 +53,19 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Sequence
 import google.generativeai as genai
-from . import auth # (같은 패키지 내의 auth 모듈 임포트)
+from . import auth  # (같은 패키지 내의 auth 모듈 임포트)
+from .llm_constants import (
+    LLM_MODEL_NAME,
+    RESPONSE_SCHEMA,
+    RANKING_RESPONSE_SCHEMA,
+    ANALYSIS_RESPONSE_SCHEMA,
+    SENTIMENT_RESPONSE_SCHEMA,
+    GENERATION_CONFIG,
+    SAFETY_SETTINGS,
+)
 
 # "youngs75_jennie.llm" 이름으로 로거 생성
 logger = logging.getLogger(__name__)
-
-# [수정] LLM 모델 및 JSON 출력 스키마 설정
-LLM_MODEL_NAME = "gemini-2.5-flash"  # 로컬/클라우드 공통 프리미엄 모델
-
-# LLM이 반환할 JSON의 구조를 정의합니다.
-RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "decision": {"type": "string", "enum": ["APPROVE", "REJECT", "SELL", "HOLD"]},
-        "reason": {"type": "string"},
-        "quantity": {
-            "type": "integer",
-            "description": "매수를 승인(APPROVE)할 경우, 매수할 주식의 수량. 그 외의 결정(REJECT, SELL, HOLD)에서는 0을 반환해야 합니다."
-        }
-    },
-    "required": ["decision", "reason", "quantity"]
-}
-
-# [v2.5] Top-N 랭킹 결재용 JSON 스키마
-RANKING_RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "best_stock_code": {
-            "type": "string",
-            "description": "후보 중에서 선택한 '단 하나의' 최고 종목 코드. 모든 후보가 매수하기에 부적절하다고 판단되면 'REJECT_ALL'을 반환해야 합니다."
-        },
-        "reason": {
-            "type": "string",
-            "description": "해당 종목을 1위로 선택한 상세한 이유. (다른 후보들과의 비교, RAG 뉴스 분석 내용 포함)"
-        },
-        "quantity": {
-            "type": "integer",
-            "description": "Agent가 계산한 수량을 참조하여, LLM이 제안하는 최종 매수 수량. (REJECT_ALL이면 0)"
-        }
-    },
-    "required": ["best_stock_code", "reason", "quantity"]
-}
-
-# [v3.0] 종목 심층 분석 및 점수 산출용 JSON 스키마
-ANALYSIS_RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "score": {
-            "type": "integer", 
-            "description": "매수 적합도 점수 (0~100점). 80점 이상이면 적극 매수(A등급), 70점 이상이면 매수(B등급), 60점 미만은 관망/매도(C,D등급)."
-        },
-        "grade": {
-            "type": "string", 
-            "enum": ["S", "A", "B", "C", "D"],
-            "description": "종합 등급 (S:90+, A:80+, B:70+, C:60+, D:60미만)"
-        },
-        "reason": {
-            "type": "string", 
-            "description": "점수 산정의 상세한 근거. (RAG 뉴스, 펀더멘털, 기술적 지표 종합)"
-        }
-    },
-    "required": ["score", "grade", "reason"]
-}
-
-# [New] 실시간 뉴스 감성 분석용 스키마
-SENTIMENT_RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "score": {
-            "type": "integer",
-            "description": "뉴스 감성 점수 (0~100). 80이상: 강력호재, 20이하: 강력악재, 40~60: 중립."
-        },
-        "reason": {
-            "type": "string",
-            "description": "점수 부여 사유 (한 문장 요약)"
-        }
-    },
-    "required": ["score", "reason"]
-}
-
-GENERATION_CONFIG = {
-    "temperature": 0.2, # (낮을수록 일관성/사실 기반)
-    "response_mime_type": "application/json", # [핵심] 응답을 JSON으로 강제
-    "response_schema": RESPONSE_SCHEMA,       # [핵심] 위에서 정의한 스키마를 따르도록 강제
-}
-SAFETY_SETTINGS = [ # (안전 설정 최소화)
-    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-]
-
 
 class BaseLLMProvider(ABC):
     def __init__(self, safety_settings):
