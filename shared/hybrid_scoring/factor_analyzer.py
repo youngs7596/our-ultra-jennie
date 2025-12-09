@@ -36,6 +36,15 @@ from .schema import (
     execute_upsert,
     is_oracle,
 )
+from .factor_constants import (
+    DEFAULT_LOOKBACK_YEARS,
+    RECENT_MONTHS,
+    FORWARD_DAYS,
+    FACTOR_DEFINITIONS,
+    NEWS_CATEGORIES,
+    MARKET_REGIME_THRESHOLDS,
+    STOCK_GROUP_THRESHOLDS,
+)
 from shared.database import _is_mariadb
 
 # [v1.1] SQLAlchemy Repository 지원 (테스트 용이성)
@@ -79,69 +88,15 @@ class FactorAnalyzer:
     주기적으로 실행되어 팩터별 예측력을 측정하고 DB에 저장합니다.
     """
     
-    # 분석 기간 설정
-    DEFAULT_LOOKBACK_YEARS = 2     # 기본 분석 기간 (2년)
-    RECENT_MONTHS = 3              # 최근성 분석 기간 (3개월)
-    FORWARD_DAYS = [5, 10, 20]     # 미래 수익률 측정 기간
-    
-    # 팩터 정의
-    FACTOR_DEFINITIONS = {
-        'momentum_6m': {
-            'name': '6개월 모멘텀',
-            'calc_func': '_calc_momentum_6m',
-        },
-        'momentum_1m': {
-            'name': '1개월 모멘텀',
-            'calc_func': '_calc_momentum_1m',
-        },
-        'value_per': {
-            'name': 'PER (저평가)',
-            'calc_func': '_calc_per_factor',
-        },
-        'value_pbr': {
-            'name': 'PBR (저평가)',
-            'calc_func': '_calc_pbr_factor',
-        },
-        'quality_roe': {
-            'name': 'ROE (수익성)',
-            'calc_func': '_calc_roe_factor',
-        },
-        'technical_rsi_oversold': {
-            'name': 'RSI 과매도',
-            'calc_func': '_calc_rsi_oversold',
-        },
-        'supply_foreign_buy': {
-            'name': '외국인 순매수',
-            'calc_func': '_calc_foreign_buy',
-        },
-    }
-    
-    # 뉴스 카테고리 정의
-    NEWS_CATEGORIES = [
-        '실적',      # 어닝 서프라이즈/쇼크
-        '수주',      # 대규모 계약
-        '신사업',    # 신규 진출
-        'M&A',      # 인수합병
-        '배당',      # 배당 발표
-        '규제',      # 규제 이슈
-        '경영',      # 경영권 분쟁, CEO 이슈
-    ]
-
+    # 분석 기간/팁/시장/그룹/뉴스 상수는 factor_constants로 이동
+    DEFAULT_LOOKBACK_YEARS = DEFAULT_LOOKBACK_YEARS
+    RECENT_MONTHS = RECENT_MONTHS
+    FORWARD_DAYS = FORWARD_DAYS
+    FACTOR_DEFINITIONS = FACTOR_DEFINITIONS
+    NEWS_CATEGORIES = NEWS_CATEGORIES
     DISCLOSURE_TABLE = 'STOCK_DISCLOSURES'
-    
-    # [v1.0.5] 시장 국면 정의
-    MARKET_REGIME_THRESHOLDS = {
-        'BULL': 0.10,      # 6개월 수익률 +10% 이상
-        'BEAR': -0.10,     # 6개월 수익률 -10% 이하
-        'SIDEWAYS': 0.0,   # 그 사이
-    }
-    
-    # [v1.0.5] 종목 그룹 분류 (시가총액 기준)
-    STOCK_GROUP_THRESHOLDS = {
-        'LARGE': 10_000_000_000_000,   # 10조 이상: 대형주
-        'MID': 1_000_000_000_000,      # 1조 이상: 중형주
-        'SMALL': 0,                     # 그 외: 소형주
-    }
+    MARKET_REGIME_THRESHOLDS = MARKET_REGIME_THRESHOLDS
+    STOCK_GROUP_THRESHOLDS = STOCK_GROUP_THRESHOLDS
     
     def __init__(self, db_conn=None, *, repository: "FactorRepository" = None):
         """

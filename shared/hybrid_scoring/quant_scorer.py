@@ -20,8 +20,6 @@ Scout v1.0 QuantScorer - 정량 점수 계산 엔진 (Dual Track)
 - ROE: 30점, 뉴스장기효과: 25점, RSI: 20점, 가치: 15점, 기타: 10점
 """
 
-from enum import Enum
-
 import logging
 import pandas as pd
 import numpy as np
@@ -48,6 +46,17 @@ from .schema import (
     get_confidence_level,
     execute_upsert,
     is_oracle,
+)
+from .quant_constants import (
+    StrategyMode,
+    DEFAULT_FILTER_CUTOFF as QC_DEFAULT_FILTER_CUTOFF,
+    DEFAULT_HOLDING_DAYS as QC_DEFAULT_HOLDING_DAYS,
+    SECTOR_RSI_MULTIPLIER as QC_SECTOR_RSI_MULTIPLIER,
+    NEWS_LONG_TERM_POSITIVE as QC_NEWS_LONG_TERM_POSITIVE,
+    SHORT_TERM_WEIGHTS as QC_SHORT_TERM_WEIGHTS,
+    LONG_TERM_WEIGHTS as QC_LONG_TERM_WEIGHTS,
+    GRADE_THRESHOLDS as QC_GRADE_THRESHOLDS,
+    RANK_CUTOFF as QC_RANK_CUTOFF,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,60 +158,17 @@ class QuantScorer:
     - 장기(D+60) 뉴스 효과 반영 (수주 72.7%, 실적 64.8%)
     """
     
-    # 기본 설정
-    DEFAULT_FILTER_CUTOFF = 0.5  # 하위 50% 탈락
-    DEFAULT_HOLDING_DAYS = 5     # 승률 측정 기준 (D+5)
+    # 기본 설정/가중치는 quant_constants 모듈로 이동
+    DEFAULT_FILTER_CUTOFF = QC_DEFAULT_FILTER_CUTOFF
+    DEFAULT_HOLDING_DAYS = QC_DEFAULT_HOLDING_DAYS
+    SECTOR_RSI_MULTIPLIER = QC_SECTOR_RSI_MULTIPLIER
+    NEWS_LONG_TERM_POSITIVE = QC_NEWS_LONG_TERM_POSITIVE
+    SHORT_TERM_WEIGHTS = QC_SHORT_TERM_WEIGHTS
+    LONG_TERM_WEIGHTS = QC_LONG_TERM_WEIGHTS
+    GRADE_THRESHOLDS = QC_GRADE_THRESHOLDS
+    RANK_CUTOFF = QC_RANK_CUTOFF
     
-    # [v1.0.6] 섹터별 RSI 효과 (팩터 분석 결과)
-    # 적중률이 높은 섹터에서 RSI 가중치 상향
-    SECTOR_RSI_MULTIPLIER = {
-        '조선운송': 1.3,   # 60.9% 적중률 → 30% 가중치 상향
-        '금융': 1.25,      # 60.1% 적중률 → 25% 가중치 상향
-        '자유소비재': 1.1,  # 55.4% 적중률 → 10% 가중치 상향
-        '정보통신': 1.1,   # 55.2% 적중률 → 10% 가중치 상향
-        '에너지화학': 1.05, # 54.5% 적중률
-        'etc': 1.05,       # 54.1% 적중률
-        '미분류': 1.05,    # 54.2% 적중률
-        '필수소비재': 0.9,  # 50.5% 적중률 → 10% 가중치 하향
-        '건설기계': 0.7,   # 49.8% 적중률 → 30% 가중치 하향
-    }
-    
-    # [v1.0.6] 장기(D+60) 호재 뉴스 카테고리 (추격매수 말고 장기 보유)
-    # 수주: D+5 43.7% → D+60 72.7%
-    # 실적: D+5 48.4% → D+60 64.8%
-    NEWS_LONG_TERM_POSITIVE = {'수주', '실적', '배당'}
-    
-    # ==========================================================
-    # [v1.0] 전략별 가중치 (3 AI 합의 - D+60 기준 재설계)
-    # ==========================================================
-    
-    # 단기 스나이퍼 가중치 (D+5 기준)
-    # RSI+외인 복합조건 55.5% 승률 중심
-    SHORT_TERM_WEIGHTS = {
-        'rsi_compound': 0.35,       # RSI+외인 복합조건 (핵심!)
-        'technical_rsi': 0.15,      # RSI 단독
-        'supply_demand': 0.20,      # 수급 (외국인+기관)
-        'quality_roe': 0.10,        # ROE
-        'momentum': 0.05,           # 모멘텀 (대폭 축소, IC 음수)
-        'value': 0.05,              # 가치 (PER/PBR)
-        'news': 0.05,               # 뉴스 (단기 역신호이므로 최소화)
-        'llm_qualitative': 0.05,    # LLM 정성
-    }
-    
-    # 장기 헌터 가중치 (D+60 기준)
-    # ROE 65.6%, 수주뉴스 72.7% 승률 중심
-    LONG_TERM_WEIGHTS = {
-        'quality_roe': 0.30,        # ROE (D+60 적중률 65.6%, 핵심!)
-        'news_long_term': 0.25,     # 뉴스 장기효과 (수주 72.7%)
-        'technical_rsi': 0.15,      # RSI (D+60 적중률 60.1%)
-        'value': 0.10,              # 가치 (PER D+60 적중률 59.9%)
-        'supply_demand': 0.10,      # 수급
-        'momentum': 0.03,           # 모멘텀 (거의 무시)
-        'news_short_term': -0.05,   # 뉴스 단기 패널티 (역신호!)
-        'llm_qualitative': 0.12,    # LLM 정성 (장기 맥락 판단 중요)
-    }
-    
-    # 뉴스 카테고리별 시간축 효과 (팩터 분석 결과)
+    # 뉴스 카테고리별 시간축 효과 (팩터 분석 결과) - 후속 분리 후보
     NEWS_TIME_EFFECT = {
         '수주': {'d5_win_rate': 0.437, 'd60_win_rate': 0.727, 'd60_return': 0.1936},
         '실적': {'d5_win_rate': 0.484, 'd60_win_rate': 0.648, 'd60_return': 0.1403},
