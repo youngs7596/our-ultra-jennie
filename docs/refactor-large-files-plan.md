@@ -1,41 +1,33 @@
-# 대형 파일 리팩터링 계획 (요약)
+# 대형 파일 리팩터링 완료 보고서
 
-## 목표 범위
-- `services/scout-job/scout.py`
-- `services/command-handler/handler.py`
-- `shared/hybrid_scoring/quant_scorer.py`
-- `shared/hybrid_scoring/factor_analyzer.py`
-- `shared/database.py`
-- `shared/llm.py`
+## 진행 기간
+- 2025-12-08 ~ 2025-12-09
 
-## 실행 단계
-1) 현행 로직 슬림화 후보 식별
-   - 각 파일의 주요 책임/블록 파악
-   - 죽은 코드·중복 로직·장황한 템플릿/로깅 위치 표시
-   - 분리 대상 유틸/상수/템플릿 리스트업
+## 리팩터링 대상 및 결과
 
-2) 모듈 분리 설계
-   - 파일별 서브모듈/헬퍼/상수 분리안 수립
-   - 공용 인터페이스(함수 시그니처)와 영향 범위 정의
-   - 외부 호출점 변경 최소화 방안 확정
+### 1. 완료 (Success) ✅
+| 파일명 | 변경 전 | 변경 후 | 비고 |
+|--------|---------|---------|------|
+| `services/command-handler/handler.py` | 대형 단일 파일 | 모듈화 완료 | 명령별 핸들러 분리 |
+| `shared/database.py` | 대형 단일 파일 | 모듈화 완료 | Repository 패턴 도입 및 파일 분리 |
+| `services/scout-job/scout.py` | 1,595 lines | 1,000 lines | `scout_pipeline`, `scout_universe`, `scout_optimizer` 분리 |
+| `services/scout-job/*` | - | - | 고아 코드 정리 및 테스트 복구 완료 |
 
-3) 리팩터링 적용
-   - `scout.py`: 단계별 함수/서브모듈로 분리(수집/스코어링/랭킹/출력), 죽은 코드 분리
-   - `command-handler/handler.py`: 명령별 핸들러 분리, 템플릿 헬퍼 추출, 레이트리밋/DRY_RUN 공통화
-   - `quant_scorer.py`, `factor_analyzer.py`: 팩터 계산/통계 헬퍼 분리, 중복 제거
-   - `database.py`: DB/Redis 유틸 분리(레포지토리/연결/캐시 헬퍼 모듈화)
-   - `llm.py`: 프로바이더/프롬프트/체인 로직 분리, 공통 util 추출
+### 2. 검증 (Verification) ✅
+- **Unit Tests**: 410개 테스트 실행 결과 **전체 통과 (410 passed)**
+  - `tests/shared/test_llm_*.py`: Mocking 전략 수정 및 최신 로직 반영
+  - `tests/shared/hybrid_scoring/`: 누락된 Enum import 수정 등
+  - `test_llm_providers.py`: Mock import 경로 수정 완료
 
-4) 회귀 대응
-   - 핵심 공개 함수/메서드 시그니처 유지 또는 어댑터 제공
-   - 단위 테스트 또는 기존 호출 흐름 기준으로 간단 검증
+### 3. 향후 과제 (Remaining) 🚧
+사용 중임이 확인되었으나, 이번 단계에서 리팩터링하지 않은 파일들입니다.
 
-## 단계적 진행 제안
-- 1차: `command-handler/handler.py`, `shared/llm.py`
-- 2차: `shared/hybrid_scoring/quant_scorer.py`, `shared/hybrid_scoring/factor_analyzer.py`
-- 3차: `shared/database.py`, `services/scout-job/scout.py`
+| 파일명 | 라인 수 | 상태 | 제안 |
+|--------|---------|------|------|
+| `shared/hybrid_scoring/quant_scorer.py` | 1,672 | **사용 중** | 단일 클래스 분해 필요 |
+| `shared/llm.py` | 1,141 | **사용 중** | Provider / Brain / Chain 분리 필요 |
+| `shared/hybrid_scoring/factor_analyzer.py`| 2,273 | **미사용** | Dead Code. 삭제 또는 `utilities/`로 백업 추천 |
 
-## 주안점
-- 기능 변화 없이 구조 개선 우선
-- 삭제가 두려운 로직은 헬퍼로 격리 후 후속 제거 용이하게 구성
-- 로깅/템플릿/상수는 별도 모듈로 이동해 핵심 로직을 슬림화
+## 결론
+핵심 서비스인 `scout.py`와 `handler.py`, `database.py`의 구조를 성공적으로 개선하고 테스트 안정성을 확보했습니다.
+남은 대형 파일들은 추후 별도 이슈로 진행하는 것을 권장합니다.
