@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 def get_active_watchlist(connection) -> Dict[str, Dict]:
     cursor = connection.cursor()
-    cursor.execute("SELECT STOCK_CODE, STOCK_NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON FROM WatchList WHERE IS_TRADABLE = 1")
+    cursor.execute("SELECT STOCK_CODE, STOCK_NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON FROM WatchList")
     rows = cursor.fetchall()
     cursor.close()
     
