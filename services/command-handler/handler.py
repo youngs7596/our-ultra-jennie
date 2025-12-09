@@ -15,12 +15,12 @@ import shared.database as database
 import shared.redis_cache as redis_cache
 from shared.notification import TelegramBot
 from shared.rabbitmq import RabbitMQPublisher
-from .limits import (
+from limits import (
     is_rate_limited,
     check_and_increment_manual_trade_limit,
 )
-from .messages import HELP_TEXT, stop_confirm_message
-from .handler_trading import (
+from messages import HELP_TEXT, stop_confirm_message
+from handler_trading import (
     handle_manual_buy,
     handle_manual_sell,
     handle_sellall,
