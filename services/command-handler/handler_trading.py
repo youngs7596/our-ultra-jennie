@@ -12,7 +12,7 @@ import shared.database as database
 import shared.redis_cache as redis_cache
 from shared.rabbitmq import RabbitMQPublisher
 
-from .limits import check_and_increment_manual_trade_limit
+from limits import check_and_increment_manual_trade_limit
 
 logger = logging.getLogger(__name__)
 
