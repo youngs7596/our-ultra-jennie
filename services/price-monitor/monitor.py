@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import shared.database as database
 import shared.strategy as strategy
+import shared.redis_cache as redis_cache
+from shared.notification import TelegramBot
 
 logger = logging.getLogger(__name__)
 
@@ -20,20 +22,23 @@ logger = logging.getLogger(__name__)
 class PriceMonitor:
     """실시간 가격 감시 클래스"""
     
-    def __init__(self, kis, config, tasks_publisher):
+    def __init__(self, kis, config, tasks_publisher, telegram_bot: TelegramBot = None):
         """
         Args:
             kis: KIS API 클라이언트
             config: ConfigManager 인스턴스
             tasks_publisher: RabbitMQPublisher 인스턴스
+            telegram_bot: 가격 알림 전송용 텔레그램 봇 (옵션)
         """
         self.kis = kis
         self.config = config
         self.tasks_publisher = tasks_publisher
+        self.telegram_bot = telegram_bot
         self.stop_event = Event()
         
         trading_mode = os.getenv("TRADING_MODE", "MOCK")
         self.use_websocket = (trading_mode == "REAL")
+        self.alert_check_interval = int(os.getenv("PRICE_ALERT_CHECK_INTERVAL", "15"))
         
         logger.info(f"Price Monitor 설정: TRADING_MODE={trading_mode}, USE_WEBSOCKET={self.use_websocket}")
         
@@ -77,6 +82,7 @@ class PriceMonitor:
     def _monitor_with_websocket(self, dry_run: bool):
         logger.info("=== WebSocket 모드로 실시간 모니터링 시작 ===")
         
+        last_alert_check = 0
         while not self.stop_event.is_set():
             try:
                 with database.get_db_connection_context() as db_conn:
@@ -107,9 +113,13 @@ class PriceMonitor:
                 last_status_log_time = time.time()
                 while self.kis.websocket.connection_event.is_set() and not self.stop_event.is_set():
                     time.sleep(1)
-                    if time.time() - last_status_log_time >= 600:
+                    now = time.time()
+                    if now - last_status_log_time >= 600:
                         logger.info(f"   (WS) [상태 체크] 연결 유지 중, 감시: {len(self.portfolio_cache)}개")
-                        last_status_log_time = time.time()
+                        last_status_log_time = now
+                    if now - last_alert_check >= self.alert_check_interval:
+                        self._process_price_alerts()
+                        last_alert_check = now
                 
                 if self.stop_event.is_set():
                     break
@@ -126,6 +136,7 @@ class PriceMonitor:
         logger.info("HTTP Polling 모드로 모니터링 시작")
         check_interval = self.config.get_int('PRICE_MONITOR_INTERVAL_SECONDS', default=10)
         
+        last_alert_check = 0
         while not self.stop_event.is_set():
             try:
                 with database.get_db_connection_context() as db_conn:
@@ -160,6 +171,12 @@ class PriceMonitor:
                     if signal:
                         logger.info(f"🔔 매도 신호 발생: {holding.get('name', stock_code)}")
                         self._publish_sell_order(signal, holding, current_price)
+                
+                # 가격 알림 체크 (주기적)
+                now = time.time()
+                if now - last_alert_check >= self.alert_check_interval:
+                    self._process_price_alerts()
+                    last_alert_check = now
                 
                 time.sleep(check_interval)
             except Exception as e:
@@ -262,3 +279,50 @@ class PriceMonitor:
             logger.info(f"   ✅ 매도 요청 발행 완료: {msg_id}")
         else:
             logger.error(f"   ❌ 매도 요청 발행 실패: {holding['code']}")
+
+    # ============================================================================
+    # 가격 알림 처리
+    # ============================================================================
+    def _process_price_alerts(self):
+        try:
+            alerts = redis_cache.get_price_alerts()
+            if not alerts:
+                return
+            
+            trading_mode = os.getenv("TRADING_MODE", "MOCK")
+            for code, info in alerts.items():
+                target = info.get("target_price")
+                alert_type = info.get("alert_type", "above")
+                name = info.get("stock_name", code)
+                
+                current_price = 0
+                if trading_mode == "MOCK":
+                    with database.get_db_connection_context() as db_conn:
+                        prices = database.get_daily_prices(db_conn, code, limit=1)
+                        current_price = float(prices['CLOSE_PRICE'].iloc[-1]) if not prices.empty else 0
+                else:
+                    snap = self.kis.get_stock_snapshot(code)
+                    current_price = snap.get("price", 0) if snap else 0
+                
+                if current_price <= 0:
+                    continue
+                
+                triggered = False
+                if alert_type == "above" and current_price >= target:
+                    triggered = True
+                if alert_type == "below" and current_price <= target:
+                    triggered = True
+                
+                if triggered:
+                    redis_cache.delete_price_alert(code)
+                    msg = (
+                        f"⏰ 가격 알림 도달\n\n"
+                        f"{name} ({code})\n"
+                        f"목표가: {target:,.0f}원 ({'이상' if alert_type=='above' else '이하'})\n"
+                        f"현재가: {current_price:,.0f}원"
+                    )
+                    if self.telegram_bot:
+                        self.telegram_bot.send_message(msg)
+                    logger.info(f"[Alert] {code} {alert_type} {target} → {current_price}")
+        except Exception as e:
+            logger.error(f"가격 알림 처리 오류: {e}", exc_info=True)

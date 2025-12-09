@@ -19,6 +19,7 @@ from shared.kis.client import KISClient as KIS_API
 from shared.kis.gateway_client import KISGatewayClient
 from shared.config import ConfigManager
 from shared.notification import TelegramBot
+from shared.rabbitmq import RabbitMQPublisher
 
 from handler import CommandHandler
 
@@ -37,11 +38,13 @@ command_handler = None
 telegram_bot = None
 polling_thread = None
 is_polling = False
+buy_publisher = None
+sell_publisher = None
 
 
 def initialize_service():
     """서비스 초기화"""
-    global command_handler, telegram_bot
+    global command_handler, telegram_bot, buy_publisher, sell_publisher
     
     logger.info("=== Command Handler Service 초기화 시작 ===")
     load_dotenv()
@@ -114,11 +117,22 @@ def initialize_service():
         )
         logger.info("✅ Telegram Bot 초기화 완료")
         
-        # 5. Command Handler 초기화
+        # 5. RabbitMQ Publisher 초기화
+        amqp_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+        buy_queue = os.getenv("RABBITMQ_QUEUE_BUY_SIGNALS", "buy-signals")
+        sell_queue = os.getenv("RABBITMQ_QUEUE_SELL_ORDERS", "sell-orders")
+        
+        buy_publisher = RabbitMQPublisher(amqp_url=amqp_url, queue_name=buy_queue)
+        sell_publisher = RabbitMQPublisher(amqp_url=amqp_url, queue_name=sell_queue)
+        logger.info("✅ RabbitMQ Publisher 초기화 완료 (buy=%s, sell=%s)", buy_queue, sell_queue)
+        
+        # 6. Command Handler 초기화
         command_handler = CommandHandler(
             kis=kis, 
             config=config_manager, 
-            telegram_bot=telegram_bot
+            telegram_bot=telegram_bot,
+            buy_publisher=buy_publisher,
+            sell_publisher=sell_publisher
         )
         logger.info("✅ Command Handler 초기화 완료")
         

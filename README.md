@@ -86,6 +86,20 @@ Watchlist (상위 15개)
       ↓               ↓                ↓                ↓
  Watchlist 스캔   포지션 사이징      실시간 감시      익절/손절 실행
  기술적 신호 탐지  분산 투자 적용    목표가/손절가    RabbitMQ 연동
+
+**수동 매매(텔레그램) 흐름**
+
+```
+Telegram 명령 (/buy, /sell, /sellall)
+          ↓
+[Command Handler]
+ - 인증/레이트리밋/일일 한도
+ - DRY_RUN 플래그 포함
+ - 큐 발행 (buy-signals / sell-orders)
+          ↓
+Buy Executor / Sell Executor
+ - 기존 리스크/포지션 규칙으로 실행
+```
 ```
 
 ### 3. 경쟁사 수혜 분석 시스템
@@ -164,6 +178,7 @@ report = analyzer.analyze('035420')  # NAVER
 | **buy-executor** | 8082 | 매수 주문 실행, 포지션 사이징 |
 | **sell-executor** | 8083 | 매도 주문 실행, 익절/손절 |
 | **price-monitor** | 8088 | 실시간 가격 모니터링, 매도 신호 발생 |
+| **command-handler** | 8089 | 텔레그램 명령 수신 → RabbitMQ 발행 (/buy, /sell, /sellall 등) |
 | **news-crawler** | 8089 | 뉴스 수집 및 감성 분석 |
 | **daily-briefing** | 8086 | 일간 브리핑 생성 |
 | **scheduler-service** | 8095 | 작업 스케줄링 (APScheduler) |
@@ -267,6 +282,9 @@ docker compose --profile real up -d
 
 # Mock 모드 (시뮬레이션)
 docker compose --profile mock up -d
+
+# DRY_RUN 강제 켜기 예시 (실수 방지용)
+DRY_RUN=true docker compose --profile real up -d command-handler buy-executor sell-executor price-monitor
 
 # 서비스 상태 확인
 docker compose ps
@@ -582,11 +600,19 @@ Mock 모드는 실제 거래 없이 전체 파이프라인을 테스트할 수 �
 | `TRADING_MODE` | REAL | MOCK | 거래 모드 |
 | `DRY_RUN` | false | true | 실제 주문 실행 여부 |
 | `MIN_LLM_SCORE` | 70 | 50 | 매수 최소 점수 기준 |
+| `RABBITMQ_QUEUE_BUY_SIGNALS` | buy-signals | buy-signals | 텔레그램 매수 요청 전달 큐 |
+| `RABBITMQ_QUEUE_SELL_ORDERS` | sell-orders | sell-orders | 텔레그램 매도/청산 전달 큐 |
 
 Mock 모드 특징:
 - 🧪 **[MOCK 테스트]** 표시가 텔레그램 알림에 추가
 - ⚠️ **[DRY RUN]** 표시로 실제 주문이 아님을 명시
 - 💰 LLM 토큰 절약 (토론 생성 건너뜀)
+
+### 텔레그램 수동 명령 (요약)
+- 지원 명령: `/pause` `/resume` `/stop 확인|긴급` `/dryrun on|off` `/buy 종목 [수량]` `/sell 종목 [수량|전량]` `/sellall 확인` `/watch` `/unwatch` `/watchlist` `/mute` `/unmute` `/alert` `/alerts` `/status` `/portfolio` `/pnl` `/balance` `/price` `/risk` `/minscore` `/maxbuy` `/config` `/help`
+- DRY_RUN이 켜져 있으면 실행 서비스에서 시뮬레이션 처리
+- 레이트 리미트(기본 5초) 및 일일 수동 거래 한도(기본 20건) 적용
+- 매수/매도/청산은 직접 주문하지 않고 RabbitMQ로 전달 후 executor가 기존 리스크 규칙으로 처리
 
 ---
 

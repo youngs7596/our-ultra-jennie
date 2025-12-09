@@ -162,6 +162,15 @@ class BuyExecutor:
             available_cash = self.kis.get_cash_balance()
             logger.info(f"가용 현금: {available_cash:,}원")
 
+            # 리스크 설정 기본값
+            risk_setting = (
+                selected_candidate.get('risk_setting')
+                or scan_result.get('risk_setting')
+                or {}
+            )
+            if (not risk_setting) and shared_regime_cache:
+                risk_setting = shared_regime_cache.get('risk_setting') or {}
+            
             # 5. 동적 포지션 사이징 (먼저 수행해야 수량 기반 분산 체크 가능)
             current_price = selected_candidate.get('current_price', 0)
             if not current_price:
@@ -184,37 +193,42 @@ class BuyExecutor:
             portfolio_value = sum([p.get('quantity', 0) * p.get('current_price', p.get('avg_price', 0)) for p in current_portfolio])
             total_assets = available_cash + portfolio_value
             
-            sizing_result = self.position_sizer.calculate_quantity(
-                stock_code=stock_code,
-                stock_price=current_price,
-                atr=atr,
-                account_balance=available_cash,
-                portfolio_value=portfolio_value
-            )
+            manual_qty = scan_result.get('manual_quantity') or selected_candidate.get('manual_quantity')
             
-            base_quantity = sizing_result.get('quantity', 0)
-            
-            # [v3.5] 동적 리스크 설정 적용 (비중 조절)
-            risk_setting = (
-                selected_candidate.get('risk_setting')
-                or scan_result.get('risk_setting')
-            )
-            if (not risk_setting) and shared_regime_cache:
-                risk_setting = shared_regime_cache.get('risk_setting')
-            risk_setting = risk_setting or {}
-            position_size_ratio = risk_setting.get('position_size_ratio', 1.0)
-            
-            position_size = int(base_quantity * position_size_ratio)
-            
-            if position_size < 1 and base_quantity >= 1:
-                 logger.warning(f"⚠️ 리스크 비율({position_size_ratio}) 적용 후 수량이 0이 되어 최소 1주로 보정")
-                 position_size = 1
-            
-            logger.info(f"📏 포지션 사이징: 기본 {base_quantity}주 x 비율 {position_size_ratio} = 최종 {position_size}주")
-            
-            if position_size <= 0:
-                logger.warning(f"포지션 사이즈 계산 결과 0 이하: {position_size} (이유: {sizing_result.get('reason', 'Unknown')})")
-                return {"status": "skipped", "reason": "Position size too small"}
+            if manual_qty:
+                position_size = int(manual_qty)
+                if position_size <= 0:
+                    return {"status": "skipped", "reason": "Invalid manual quantity"}
+                if not dry_run:
+                    needed = position_size * current_price
+                    if needed > available_cash:
+                        return {"status": "error", "reason": "Insufficient cash for manual order"}
+                logger.info(f"📏 수동 수량 사용: {position_size}주 (사용자 지정)")
+            else:
+                sizing_result = self.position_sizer.calculate_quantity(
+                    stock_code=stock_code,
+                    stock_price=current_price,
+                    atr=atr,
+                    account_balance=available_cash,
+                    portfolio_value=portfolio_value
+                )
+                
+                base_quantity = sizing_result.get('quantity', 0)
+                
+                # [v3.5] 동적 리스크 설정 적용 (비중 조절)
+                position_size_ratio = risk_setting.get('position_size_ratio', 1.0)
+                
+                position_size = int(base_quantity * position_size_ratio)
+                
+                if position_size < 1 and base_quantity >= 1:
+                     logger.warning(f"⚠️ 리스크 비율({position_size_ratio}) 적용 후 수량이 0이 되어 최소 1주로 보정")
+                     position_size = 1
+                
+                logger.info(f"📏 포지션 사이징: 기본 {base_quantity}주 x 비율 {position_size_ratio} = 최종 {position_size}주")
+                
+                if position_size <= 0:
+                    logger.warning(f"포지션 사이즈 계산 결과 0 이하: {position_size} (이유: {sizing_result.get('reason', 'Unknown')})")
+                    return {"status": "skipped", "reason": "Position size too small"}
 
             logger.info(f"포지션 사이즈: {position_size}주, 예상 금액: {position_size * current_price:,}원")
 
