@@ -794,3 +794,106 @@ def clear_notification_mute(redis_client=None) -> bool:
     except Exception as e:
         logger.error(f"❌ [Redis] 알림 음소거 해제 실패: {e}")
         return False
+
+
+# ============================================================================
+# 가격 알림 (Price Alert)
+# ============================================================================
+
+PRICE_ALERT_PREFIX = "price_alert:"
+
+
+def set_price_alert(
+    stock_code: str,
+    target_price: float,
+    stock_name: str = "",
+    alert_type: str = "above",  # "above" 또는 "below"
+    ttl_seconds: int = 86400 * 7,  # 기본 7일
+    redis_client=None
+) -> bool:
+    """
+    [Redis] 가격 알림을 설정합니다.
+    
+    Args:
+        stock_code: 종목 코드
+        target_price: 목표 가격
+        stock_name: 종목명
+        alert_type: "above" (이상) 또는 "below" (이하)
+        ttl_seconds: TTL (기본 7일)
+        redis_client: 테스트용 Redis 클라이언트
+    
+    Returns:
+        성공 여부
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return False
+    
+    try:
+        key = f"{PRICE_ALERT_PREFIX}{stock_code}"
+        data = {
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+            "target_price": target_price,
+            "alert_type": alert_type,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "triggered": False
+        }
+        r.setex(key, ttl_seconds, json.dumps(data))
+        logger.info(f"⏰ [Redis] 가격 알림 설정: {stock_name}({stock_code}) {target_price:,.0f}원 {alert_type}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Redis] 가격 알림 설정 실패: {e}")
+        return False
+
+
+def get_price_alerts(redis_client=None) -> Dict[str, Dict[str, Any]]:
+    """
+    [Redis] 모든 가격 알림을 조회합니다.
+    
+    Returns:
+        {stock_code: {stock_name, target_price, alert_type, ...}, ...}
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return {}
+    
+    try:
+        keys = r.keys(f"{PRICE_ALERT_PREFIX}*")
+        results = {}
+        for key in keys:
+            stock_code = key.replace(PRICE_ALERT_PREFIX, "")
+            data_json = r.get(key)
+            if data_json:
+                results[stock_code] = json.loads(data_json)
+        return results
+    except Exception as e:
+        logger.error(f"❌ [Redis] 가격 알림 조회 실패: {e}")
+        return {}
+
+
+def delete_price_alert(stock_code: str, redis_client=None) -> bool:
+    """
+    [Redis] 가격 알림을 삭제합니다.
+    
+    Args:
+        stock_code: 종목 코드
+        redis_client: 테스트용 Redis 클라이언트
+    
+    Returns:
+        성공 여부
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return False
+    
+    try:
+        key = f"{PRICE_ALERT_PREFIX}{stock_code}"
+        deleted = r.delete(key)
+        if deleted:
+            logger.info(f"🗑️ [Redis] 가격 알림 삭제: {stock_code}")
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"❌ [Redis] 가격 알림 삭제 실패: {e}")
+        return False
