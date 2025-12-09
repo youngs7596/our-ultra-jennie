@@ -98,8 +98,8 @@ def sample_portfolio_item():
 class TestJennieBrainInit:
     """JennieBrain 초기화 테스트"""
     
-    @patch('shared.llm.build_llm_provider')
-    @patch('shared.llm.ClaudeLLMProvider')
+    @patch('shared.llm_providers.build_llm_provider')
+    @patch('shared.llm_providers.ClaudeLLMProvider')
     def test_init_all_providers_success(self, mock_claude_class, mock_build_provider):
         """모든 Provider 초기화 성공"""
         from shared.llm import JennieBrain
@@ -117,7 +117,7 @@ class TestJennieBrainInit:
         assert brain.provider_gemini is not None
         assert brain.provider == brain.provider_gemini  # 기본 Provider
     
-    @patch('shared.llm.build_llm_provider')
+    @patch('shared.llm_providers.build_llm_provider')
     def test_init_gemini_fail_graceful(self, mock_build_provider):
         """Gemini 실패 시 graceful handling"""
         from shared.llm import JennieBrain

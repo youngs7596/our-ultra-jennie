@@ -2,43 +2,36 @@
 tests/shared/test_llm_prompts.py - LLM 프롬프트 빌더 함수 Unit Tests (1단계)
 ==========================================================================
 
-shared/llm.py의 프롬프트 빌더 함수들을 테스트합니다.
+shared/llm_prompts.py의 프롬프트 빌더 함수들을 테스트합니다.
 이 함수들은 순수 함수이므로 외부 의존성 없이 테스트 가능합니다.
 
 실행 방법:
     pytest tests/shared/test_llm_prompts.py -v
 
 커버리지 포함:
-    pytest tests/shared/test_llm_prompts.py -v --cov=shared.llm --cov-report=term-missing
+    pytest tests/shared/test_llm_prompts.py -v --cov=shared.llm_prompts --cov-report=term-missing
 """
 
 import pytest
 import json
+
+# v5.1 - llm_prompts에서 직접 함수 import
+from shared.llm_prompts import (
+    build_buy_prompt_mean_reversion,
+    build_buy_prompt_golden_cross,
+    build_buy_prompt_ranking,
+    build_sell_prompt,
+    build_add_watchlist_prompt,
+    build_analysis_prompt,
+    build_parameter_verification_prompt,
+    build_hunter_prompt_v5,
+)
 
 
 # ============================================================================
 # Fixtures
 # ============================================================================
 
-@pytest.fixture
-def mock_brain():
-    """
-    JennieBrain 인스턴스를 __init__ 없이 생성 (프롬프트 빌더만 테스트)
-    
-    __init__은 API 키를 로드하므로 우회합니다.
-    """
-    from shared.llm import JennieBrain
-    
-    # __new__로 인스턴스만 생성 (__init__ 호출 안함)
-    brain = object.__new__(JennieBrain)
-    
-    # 필요한 속성 초기화 (프롬프트 빌더에서 사용하지 않음)
-    brain.provider = None
-    brain.provider_gemini = None
-    brain.provider_openai = None
-    brain.provider_claude = None
-    
-    return brain
 
 
 @pytest.fixture
@@ -140,9 +133,9 @@ def sample_ranking_candidates():
 class TestBuyPromptMeanReversion:
     """평균 회귀 매수 프롬프트 테스트"""
     
-    def test_build_buy_prompt_bb_lower(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_bb_lower(self, sample_stock_snapshot):
         """볼린저 밴드 하단 신호"""
-        prompt = mock_brain._build_buy_prompt_mean_reversion(
+        prompt = build_buy_prompt_mean_reversion(
             sample_stock_snapshot, 
             buy_signal_type='BB_LOWER'
         )
@@ -155,9 +148,9 @@ class TestBuyPromptMeanReversion:
         assert 'APPROVE' in prompt or 'REJECT' in prompt
         assert '남은 예산' in prompt
     
-    def test_build_buy_prompt_rsi_oversold(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_rsi_oversold(self, sample_stock_snapshot):
         """RSI 과매도 신호"""
-        prompt = mock_brain._build_buy_prompt_mean_reversion(
+        prompt = build_buy_prompt_mean_reversion(
             sample_stock_snapshot, 
             buy_signal_type='RSI_OVERSOLD'
         )
@@ -165,9 +158,9 @@ class TestBuyPromptMeanReversion:
         assert 'RSI' in prompt
         assert '30 이하' in prompt
     
-    def test_build_buy_prompt_unknown_signal(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_unknown_signal(self, sample_stock_snapshot):
         """알 수 없는 신호 타입"""
-        prompt = mock_brain._build_buy_prompt_mean_reversion(
+        prompt = build_buy_prompt_mean_reversion(
             sample_stock_snapshot, 
             buy_signal_type='UNKNOWN_TYPE'
         )
@@ -175,9 +168,9 @@ class TestBuyPromptMeanReversion:
         # 알 수 없는 신호도 처리 가능해야 함
         assert '검토 필요' in prompt or 'UNKNOWN_TYPE' in prompt
     
-    def test_build_buy_prompt_includes_rag_context(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_includes_rag_context(self, sample_stock_snapshot):
         """RAG 컨텍스트 포함 확인"""
-        prompt = mock_brain._build_buy_prompt_mean_reversion(
+        prompt = build_buy_prompt_mean_reversion(
             sample_stock_snapshot, 
             buy_signal_type='BB_LOWER'
         )
@@ -188,9 +181,9 @@ class TestBuyPromptMeanReversion:
 class TestBuyPromptGoldenCross:
     """추세 돌파 매수 프롬프트 테스트"""
     
-    def test_build_buy_prompt_golden_cross(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_golden_cross(self, sample_stock_snapshot):
         """골든 크로스 신호"""
-        prompt = mock_brain._build_buy_prompt_golden_cross(
+        prompt = build_buy_prompt_golden_cross(
             sample_stock_snapshot, 
             buy_signal_type='GOLDEN_CROSS'
         )
@@ -199,9 +192,9 @@ class TestBuyPromptGoldenCross:
         assert '골든 크로스' in prompt
         assert '추세' in prompt
     
-    def test_build_buy_prompt_momentum(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_momentum(self, sample_stock_snapshot):
         """모멘텀 신호"""
-        prompt = mock_brain._build_buy_prompt_golden_cross(
+        prompt = build_buy_prompt_golden_cross(
             sample_stock_snapshot, 
             buy_signal_type='MOMENTUM'
         )
@@ -209,9 +202,9 @@ class TestBuyPromptGoldenCross:
         assert '모멘텀' in prompt
         assert '상승세' in prompt
     
-    def test_build_buy_prompt_relative_strength(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_relative_strength(self, sample_stock_snapshot):
         """상대 강도 신호"""
-        prompt = mock_brain._build_buy_prompt_golden_cross(
+        prompt = build_buy_prompt_golden_cross(
             sample_stock_snapshot, 
             buy_signal_type='RELATIVE_STRENGTH'
         )
@@ -219,9 +212,9 @@ class TestBuyPromptGoldenCross:
         assert '상대 강도' in prompt
         assert 'KOSPI' in prompt
     
-    def test_build_buy_prompt_resistance_breakout(self, mock_brain, sample_stock_snapshot):
+    def test_build_buy_prompt_resistance_breakout(self, sample_stock_snapshot):
         """저항선 돌파 신호"""
-        prompt = mock_brain._build_buy_prompt_golden_cross(
+        prompt = build_buy_prompt_golden_cross(
             sample_stock_snapshot, 
             buy_signal_type='RESISTANCE_BREAKOUT'
         )
@@ -232,9 +225,9 @@ class TestBuyPromptGoldenCross:
 class TestSellPrompt:
     """매도 프롬프트 테스트"""
     
-    def test_build_sell_prompt(self, mock_brain, sample_portfolio_item):
+    def test_build_sell_prompt(self, sample_portfolio_item):
         """매도 프롬프트 생성"""
-        prompt = mock_brain._build_sell_prompt(sample_portfolio_item)
+        prompt = build_sell_prompt(sample_portfolio_item)
         
         assert '삼성전자' in prompt
         assert '005930' in prompt
@@ -247,9 +240,9 @@ class TestSellPrompt:
 class TestAddWatchlistPrompt:
     """관심 종목 편입 프롬프트 테스트"""
     
-    def test_build_add_watchlist_prompt(self, mock_brain, sample_watchlist_candidate):
+    def test_build_add_watchlist_prompt(self, sample_watchlist_candidate):
         """관심 종목 편입 프롬프트 생성"""
-        prompt = mock_brain._build_add_watchlist_prompt(sample_watchlist_candidate)
+        prompt = build_add_watchlist_prompt(sample_watchlist_candidate)
         
         assert 'SK하이닉스' in prompt
         assert '000660' in prompt
@@ -261,9 +254,9 @@ class TestAddWatchlistPrompt:
 class TestBuyPromptRanking:
     """Top-N 랭킹 결재 프롬프트 테스트"""
     
-    def test_build_buy_prompt_ranking(self, mock_brain, sample_ranking_candidates):
+    def test_build_buy_prompt_ranking(self, sample_ranking_candidates):
         """랭킹 프롬프트 생성"""
-        prompt = mock_brain._build_buy_prompt_ranking(sample_ranking_candidates)
+        prompt = build_buy_prompt_ranking(sample_ranking_candidates)
         
         # 후보 정보 포함
         assert '삼성전자' in prompt
@@ -280,7 +273,7 @@ class TestBuyPromptRanking:
         assert 'REJECT_ALL' in prompt
         assert 'best_stock_code' in prompt
     
-    def test_build_buy_prompt_ranking_single_candidate(self, mock_brain):
+    def test_build_buy_prompt_ranking_single_candidate(self):
         """단일 후보 랭킹"""
         single_candidate = [{
             'stock_code': '005930',
@@ -298,7 +291,7 @@ class TestBuyPromptRanking:
             'rag_context': None,  # RAG 없음
         }]
         
-        prompt = mock_brain._build_buy_prompt_ranking(single_candidate)
+        prompt = build_buy_prompt_ranking(single_candidate)
         
         assert '삼성전자' in prompt
         assert 'Top 1' in prompt or '후보 1' in prompt
@@ -308,9 +301,9 @@ class TestBuyPromptRanking:
 class TestAnalysisPrompt:
     """종목 분석 프롬프트 테스트"""
     
-    def test_build_analysis_prompt(self, mock_brain, sample_analysis_info):
+    def test_build_analysis_prompt(self, sample_analysis_info):
         """분석 프롬프트 생성"""
-        prompt = mock_brain._build_analysis_prompt(sample_analysis_info)
+        prompt = build_analysis_prompt(sample_analysis_info)
         
         assert 'NAVER' in prompt
         assert '035420' in prompt
@@ -318,7 +311,7 @@ class TestAnalysisPrompt:
         assert '점수' in prompt or 'score' in prompt
         assert '등급' in prompt or 'grade' in prompt
     
-    def test_build_analysis_prompt_no_news(self, mock_brain):
+    def test_build_analysis_prompt_no_news(self):
         """뉴스 없는 경우"""
         info = {
             'code': '005930',
@@ -328,7 +321,7 @@ class TestAnalysisPrompt:
             'market_cap': 400000000,
         }
         
-        prompt = mock_brain._build_analysis_prompt(info)
+        prompt = build_analysis_prompt(info)
         
         assert '특별한 뉴스 없음' in prompt
 
@@ -336,7 +329,7 @@ class TestAnalysisPrompt:
 class TestHunterPromptV5:
     """v5 Hunter 프롬프트 테스트 (정량 컨텍스트 포함)"""
     
-    def test_build_hunter_prompt_v5_with_quant_context(self, mock_brain):
+    def test_build_hunter_prompt_v5_with_quant_context(self):
         """정량 컨텍스트 포함 프롬프트"""
         stock_info = {
             'name': '삼성전자',
@@ -351,7 +344,7 @@ class TestHunterPromptV5:
         - 표본 수: 45개
         """
         
-        prompt = mock_brain._build_hunter_prompt_v5(stock_info, quant_context)
+        prompt = build_hunter_prompt_v5(stock_info, quant_context)
         
         # 정량 컨텍스트 포함 확인
         assert '정량 분석' in prompt
@@ -361,9 +354,9 @@ class TestHunterPromptV5:
         # 뉴스 포함 확인
         assert 'AI 반도체' in prompt
     
-    def test_build_hunter_prompt_v5_without_quant_context(self, mock_brain, sample_analysis_info):
+    def test_build_hunter_prompt_v5_without_quant_context(self, sample_analysis_info):
         """정량 컨텍스트 없으면 기존 방식으로 폴백"""
-        prompt = mock_brain._build_hunter_prompt_v5(sample_analysis_info, quant_context=None)
+        prompt = build_hunter_prompt_v5(sample_analysis_info, quant_context=None)
         
         # 기존 _build_analysis_prompt와 동일한 출력
         assert 'NAVER' in prompt
@@ -373,7 +366,7 @@ class TestHunterPromptV5:
 class TestParameterVerificationPrompt:
     """파라미터 변경 검증 프롬프트 테스트"""
     
-    def test_build_parameter_verification_prompt(self, mock_brain):
+    def test_build_parameter_verification_prompt(self):
         """파라미터 검증 프롬프트 생성"""
         current_params = {'take_profit': 0.08, 'stop_loss': -0.05}
         new_params = {'take_profit': 0.09, 'stop_loss': -0.045}
@@ -381,7 +374,7 @@ class TestParameterVerificationPrompt:
         new_perf = {'mdd': -12.0, 'return': 14.0}
         market_summary = "최근 시장은 변동성이 높은 상태"
         
-        prompt = mock_brain._build_parameter_verification_prompt(
+        prompt = build_parameter_verification_prompt(
             current_params, new_params,
             current_perf, new_perf,
             market_summary
@@ -403,7 +396,7 @@ class TestParameterVerificationPrompt:
 class TestCompetitorBenefitPrompt:
     """경쟁사 수혜 분석 프롬프트 테스트"""
     
-    def test_inject_competitor_benefit_context(self, mock_brain):
+    def test_inject_competitor_benefit_context(self):
         """경쟁사 수혜 컨텍스트 주입"""
         base_prompt = "기존 분석 프롬프트입니다."
         
@@ -419,7 +412,7 @@ class TestCompetitorBenefitPrompt:
         assert '반사이익' in result
         assert base_prompt in result  # 기존 프롬프트도 포함
     
-    def test_inject_competitor_benefit_context_zero_score(self, mock_brain):
+    def test_inject_competitor_benefit_context_zero_score(self):
         """수혜 점수 0이면 원본 반환"""
         base_prompt = "기존 분석 프롬프트입니다."
         
@@ -436,12 +429,12 @@ class TestCompetitorBenefitPrompt:
 class TestFormatHelpers:
     """포맷 헬퍼 함수 테스트 (프롬프트 내부)"""
     
-    def test_format_market_cap_trillion(self, mock_brain, sample_stock_snapshot):
+    def test_format_market_cap_trillion(self, sample_stock_snapshot):
         """시가총액 조 단위 포맷"""
         # market_cap을 조 단위로 설정
         sample_stock_snapshot['market_cap'] = 400000000  # 400조 (백만원 * 1,000,000)
         
-        prompt = mock_brain._build_buy_prompt_mean_reversion(
+        prompt = build_buy_prompt_mean_reversion(
             sample_stock_snapshot, 
             buy_signal_type='BB_LOWER'
         )
@@ -449,11 +442,11 @@ class TestFormatHelpers:
         # '조' 또는 '억' 단위 포함 확인
         assert '조' in prompt or '억' in prompt
     
-    def test_format_per_negative(self, mock_brain, sample_stock_snapshot):
+    def test_format_per_negative(self, sample_stock_snapshot):
         """PER 음수(적자 기업) 포맷"""
         sample_stock_snapshot['per'] = -5.0
         
-        prompt = mock_brain._build_buy_prompt_mean_reversion(
+        prompt = build_buy_prompt_mean_reversion(
             sample_stock_snapshot, 
             buy_signal_type='BB_LOWER'
         )
@@ -464,12 +457,12 @@ class TestFormatHelpers:
 class TestEdgeCases:
     """Edge Cases 테스트"""
     
-    def test_empty_stock_info(self, mock_brain):
+    def test_empty_stock_info(self):
         """빈 종목 정보"""
         empty_info = {}
         
         # 에러 없이 프롬프트 생성 가능해야 함
-        prompt = mock_brain._build_buy_prompt_mean_reversion(
+        prompt = build_buy_prompt_mean_reversion(
             empty_info, 
             buy_signal_type='BB_LOWER'
         )
@@ -477,16 +470,16 @@ class TestEdgeCases:
         assert prompt is not None
         assert 'N/A' in prompt
     
-    def test_very_long_rag_context(self, mock_brain, sample_ranking_candidates):
+    def test_very_long_rag_context(self, sample_ranking_candidates):
         """매우 긴 RAG 컨텍스트 (500자 초과)"""
         sample_ranking_candidates[0]['rag_context'] = 'A' * 1000  # 1000자
         
-        prompt = mock_brain._build_buy_prompt_ranking(sample_ranking_candidates)
+        prompt = build_buy_prompt_ranking(sample_ranking_candidates)
         
         # 축약되어야 함
         assert '생략' in prompt or len(prompt) < 50000
     
-    def test_special_characters_in_name(self, mock_brain):
+    def test_special_characters_in_name(self):
         """종목명에 특수문자"""
         info = {
             'code': '123456',
@@ -498,7 +491,7 @@ class TestEdgeCases:
             'market_cap': 100000000,
         }
         
-        prompt = mock_brain._build_buy_prompt_mean_reversion(info, 'BB_LOWER')
+        prompt = build_buy_prompt_mean_reversion(info, 'BB_LOWER')
         
         assert 'LG화학' in prompt
 
