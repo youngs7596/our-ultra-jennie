@@ -7,6 +7,7 @@ import logging
 import sys
 import os
 from datetime import datetime, timezone
+from typing import Optional
 
 # shared 패키지 임포트
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -14,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 import shared.database as database
 import shared.redis_cache as redis_cache
 from shared.notification import TelegramBot
+from shared.rabbitmq import RabbitMQPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +23,24 @@ logger = logging.getLogger(__name__)
 class CommandHandler:
     """Telegram 명령 처리 클래스"""
     
-    def __init__(self, kis, config, telegram_bot: TelegramBot = None):
+    def __init__(self, kis, config, telegram_bot: TelegramBot = None,
+                 buy_publisher: RabbitMQPublisher = None,
+                 sell_publisher: RabbitMQPublisher = None):
         """
         Args:
             kis: KIS API 클라이언트
             config: ConfigManager 인스턴스
             telegram_bot: TelegramBot 인스턴스
+            buy_publisher: buy-signals 큐 퍼블리셔
+            sell_publisher: sell-orders 큐 퍼블리셔
         """
         self.kis = kis
         self.config = config
         self.telegram_bot = telegram_bot
+        self.buy_publisher = buy_publisher
+        self.sell_publisher = sell_publisher
+        self.min_command_interval = int(os.getenv("COMMAND_MIN_INTERVAL_SECONDS", "5"))
+        self.manual_trade_daily_limit = int(os.getenv("MANUAL_TRADE_DAILY_LIMIT", "20"))
         
         # 명령어별 핸들러 매핑
         self.command_handlers = {
@@ -148,6 +158,12 @@ class CommandHandler:
             self.telegram_bot.reply(chat_id, f"❓ 알 수 없는 명령어: /{command}\n/help 로 도움말을 확인하세요.")
             return
         
+        # 레이트 리미트 체크 (기본 5초)
+        if self._is_rate_limited(chat_id):
+            wait_msg = f"⏳ 명령이 너무 빠릅니다. {self.min_command_interval}초 후 다시 시도하세요."
+            self.telegram_bot.reply(chat_id, wait_msg)
+            return
+        
         # 핸들러 호출
         result = handler(cmd, dry_run=dry_run)
         
@@ -169,17 +185,18 @@ class CommandHandler:
         return f"⏸️ 매수가 중지되었습니다.\n\n📝 사유: {reason}\n\n/resume 으로 재개할 수 있습니다."
     
     def _handle_resume(self, cmd: dict, dry_run: bool) -> str:
-        """매수 재개"""
+        """매수 재개 + 긴급중지 해제"""
         redis_cache.set_trading_flag('pause', False, reason='사용자 요청')
+        redis_cache.set_trading_flag('stop', False, reason='사용자 요청')
         
-        return "▶️ 매수가 재개되었습니다.\n\n자동 매수가 다시 활성화됩니다."
+        return "▶️ 매수가 재개되었습니다.\n\n긴급 중지도 해제되었습니다."
     
     def _handle_stop(self, cmd: dict, dry_run: bool) -> str:
         """긴급 전체 중지"""
         args = cmd.get('args', [])
         
         # 확인 키워드 필요
-        if not args or args[0] != '확인':
+        if not args or args[0] not in ['확인', '긴급']:
             return "⚠️ 긴급 중지 명령입니다.\n\n모든 매수/매도가 중단됩니다.\n확인하려면 `/stop 확인`을 입력하세요."
         
         redis_cache.set_trading_flag('stop', True, reason='긴급 중지')
@@ -379,6 +396,15 @@ class CommandHandler:
                 return f"❓ 수량이 올바르지 않습니다: {args[1]}"
         
         try:
+            # 일일 수동 거래 횟수 제한
+            limit_error = self._check_manual_trade_limit(cmd)
+            if limit_error:
+                return limit_error
+            
+            # 퍼블리셔 확인
+            if not self.buy_publisher:
+                return "❌ 매수 퍼블리셔가 초기화되지 않았습니다."
+            
             # 1. 종목 코드 변환
             stock_code, stock_name = self._resolve_stock(stock_input)
             if not stock_code:
@@ -397,8 +423,7 @@ class CommandHandler:
             if quantity is None:
                 try:
                     cash = self.kis.get_cash_balance()
-                    # 기본: 가용 현금의 20%로 매수 (최대 5% 비중)
-                    invest_amount = min(cash * 0.2, cash * 0.05)
+                    invest_amount = cash * 0.2  # 기본 20%
                     quantity = int(invest_amount / current_price)
                     if quantity <= 0:
                         return f"❌ 잔고 부족으로 매수 불가\n\n가용 현금: {cash:,.0f}원\n현재가: {current_price:,.0f}원"
@@ -408,54 +433,42 @@ class CommandHandler:
             
             total_amount = current_price * quantity
             
-            # 4. DRY_RUN 또는 dry_run 모드 체크
+            # 4. DRY_RUN 플래그
             effective_dry_run = dry_run or redis_cache.is_dryrun_enabled()
             
-            if effective_dry_run:
-                return f"""🔧 *[DRY\\_RUN] 수동 매수 시뮬레이션*
+            # 5. 큐로 퍼블리시 (buy-executor가 포지션/리스크 검증 수행)
+            payload = {
+                "source": "telegram-manual",
+                "market_regime": "MANUAL",
+                "strategy_preset": {"name": "MANUAL_TELEGRAM", "params": {}},
+                "risk_setting": {"position_size_ratio": 1.0},
+                "manual_quantity": quantity,
+                "dry_run": effective_dry_run,
+                "user": cmd.get('username', 'unknown'),
+                "requested_at": datetime.now().isoformat(),
+                "candidates": [{
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
+                    "current_price": current_price,
+                    "llm_score": 100,
+                    "llm_reason": "[Telegram 수동매수] 사용자 입력",
+                    "buy_signal_type": "MANUAL_TELEGRAM",
+                    "factor_score": 100,
+                    "manual_quantity": quantity
+                }]
+            }
+            
+            msg_id = self.buy_publisher.publish(payload)
+            if not msg_id:
+                return "❌ 매수 요청 발행 실패 (RabbitMQ)"
+            
+            dry_run_suffix = "\n⚠️ DRY_RUN 모드: 실행 서비스에서 시뮬레이션 처리" if effective_dry_run else ""
+            return f"""📨 매수 요청을 접수했습니다.
 
 📈 {stock_name} ({stock_code})
-📊 현재가: {current_price:,.0f}원
-🛒 주문 수량: {quantity}주
-💰 예상 금액: {total_amount:,.0f}원
-
-⚠️ 실제 주문은 실행되지 않았습니다.
-실거래를 원하면 `/dryrun off` 후 재시도하세요."""
-            
-            # 5. 실제 매수 주문
-            logger.info(f"💰 수동 매수 주문: {stock_name} ({stock_code}) {quantity}주 @ {current_price:,.0f}원")
-            
-            order_result = self.kis.place_buy_order(stock_code, quantity, current_price)
-            
-            if order_result and order_result.get('order_no'):
-                order_no = order_result['order_no']
-                
-                # 거래 로그 기록
-                try:
-                    with database.get_db_connection_context() as db_conn:
-                        database.record_trade(
-                            db_conn,
-                            stock_code=stock_code,
-                            trade_type='BUY',
-                            quantity=quantity,
-                            price=current_price,
-                            reason=f"[Telegram 수동매수] /buy {stock_input}"
-                        )
-                except Exception as e:
-                    logger.warning(f"거래 로그 기록 실패: {e}")
-                
-                return f"""✅ *수동 매수 주문 완료*
-
-📈 {stock_name} ({stock_code})
-📊 주문가: {current_price:,.0f}원
 🛒 수량: {quantity}주
-💰 금액: {total_amount:,.0f}원
-🔖 주문번호: {order_no}
-
-⏳ 체결 확인은 잠시 후 `/portfolio` 로 확인하세요."""
-            else:
-                error_msg = order_result.get('error', 'Unknown error') if order_result else 'No response'
-                return f"❌ 매수 주문 실패: {error_msg}"
+💰 예상 금액: {total_amount:,.0f}원
+🧾 메시지 ID: {msg_id}{dry_run_suffix}"""
             
         except Exception as e:
             logger.error(f"수동 매수 오류: {e}", exc_info=True)
@@ -491,6 +504,14 @@ class CommandHandler:
             sell_all = True  # 수량 미지정 시 전량 매도
         
         try:
+            # 일일 수동 거래 횟수 제한
+            limit_error = self._check_manual_trade_limit(cmd)
+            if limit_error:
+                return limit_error
+            
+            if not self.sell_publisher:
+                return "❌ 매도 퍼블리셔가 초기화되지 않았습니다."
+            
             # 1. 종목 코드 변환
             stock_code, stock_name = self._resolve_stock(stock_input)
             if not stock_code:
@@ -533,53 +554,31 @@ class CommandHandler:
             profit_pct = ((current_price - buy_price) / buy_price * 100) if buy_price > 0 else 0
             profit_emoji = "📈" if profit >= 0 else "📉"
             
-            # 4. DRY_RUN 체크
             effective_dry_run = dry_run or redis_cache.is_dryrun_enabled()
             
-            if effective_dry_run:
-                return f"""🔧 *[DRY\\_RUN] 수동 매도 시뮬레이션*
+            payload = {
+                "source": "telegram-manual",
+                "stock_code": stock_code,
+                "stock_name": stock_name,
+                "quantity": quantity,
+                "sell_reason": "MANUAL_SELL",
+                "requested_by": cmd.get('username', 'unknown'),
+                "requested_at": datetime.now().isoformat(),
+                "dry_run": effective_dry_run
+            }
+            
+            msg_id = self.sell_publisher.publish(payload)
+            if not msg_id:
+                return "❌ 매도 요청 발행 실패 (RabbitMQ)"
+            
+            dry_run_suffix = "\n⚠️ DRY_RUN 모드: 실행 서비스에서 시뮬레이션 처리" if effective_dry_run else ""
+            return f"""📨 매도 요청을 접수했습니다.
 
 📉 {stock_name} ({stock_code})
-📊 현재가: {current_price:,.0f}원
-🛒 매도 수량: {quantity}주 / {holding_qty}주
+🛒 수량: {quantity}주 / 보유 {holding_qty}주
 💰 예상 금액: {total_amount:,.0f}원
 {profit_emoji} 예상 손익: {profit:+,.0f}원 ({profit_pct:+.2f}%)
-
-⚠️ 실제 주문은 실행되지 않았습니다."""
-            
-            # 5. 실제 매도 주문
-            logger.info(f"💵 수동 매도 주문: {stock_name} ({stock_code}) {quantity}주 @ {current_price:,.0f}원")
-            
-            order_result = self.kis.place_sell_order(stock_code, quantity, current_price)
-            
-            if order_result and order_result.get('order_no'):
-                order_no = order_result['order_no']
-                
-                # 거래 로그 기록
-                try:
-                    with database.get_db_connection_context() as db_conn:
-                        database.record_trade(
-                            db_conn,
-                            stock_code=stock_code,
-                            trade_type='SELL',
-                            quantity=quantity,
-                            price=current_price,
-                            reason=f"[Telegram 수동매도] /sell {stock_input}"
-                        )
-                except Exception as e:
-                    logger.warning(f"거래 로그 기록 실패: {e}")
-                
-                return f"""✅ *수동 매도 주문 완료*
-
-📉 {stock_name} ({stock_code})
-📊 주문가: {current_price:,.0f}원
-🛒 수량: {quantity}주
-💰 금액: {total_amount:,.0f}원
-{profit_emoji} 예상 손익: {profit:+,.0f}원 ({profit_pct:+.2f}%)
-🔖 주문번호: {order_no}"""
-            else:
-                error_msg = order_result.get('error', 'Unknown error') if order_result else 'No response'
-                return f"❌ 매도 주문 실패: {error_msg}"
+🧾 메시지 ID: {msg_id}{dry_run_suffix}"""
             
         except Exception as e:
             logger.error(f"수동 매도 오류: {e}", exc_info=True)
@@ -621,6 +620,9 @@ class CommandHandler:
         effective_dry_run = dry_run or redis_cache.is_dryrun_enabled()
         
         try:
+            if not self.sell_publisher:
+                return "❌ 매도 퍼블리셔가 초기화되지 않았습니다."
+            
             with database.get_db_connection_context() as db_conn:
                 portfolio = database.get_active_portfolio(db_conn)
             
@@ -639,35 +641,34 @@ class CommandHandler:
                 if quantity <= 0:
                     continue
                 
-                try:
-                    snapshot = self.kis.get_stock_snapshot(stock_code)
-                    current_price = snapshot.get('price', 0) if snapshot else 0
-                    
-                    if effective_dry_run:
-                        results.append(f"🔧 {stock_name}: {quantity}주 @ {current_price:,.0f}원")
-                        success_count += 1
-                    else:
-                        order_result = self.kis.place_sell_order(stock_code, quantity, current_price)
-                        if order_result and order_result.get('order_no'):
-                            results.append(f"✅ {stock_name}: {quantity}주")
-                            success_count += 1
-                        else:
-                            results.append(f"❌ {stock_name}: 주문 실패")
-                            fail_count += 1
-                            
-                except Exception as e:
-                    results.append(f"❌ {stock_name}: {e}")
+                payload = {
+                    "source": "telegram-manual",
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
+                    "quantity": quantity,
+                    "sell_reason": "MANUAL_SELLALL",
+                    "requested_by": cmd.get('username', 'unknown'),
+                    "requested_at": datetime.now().isoformat(),
+                    "dry_run": effective_dry_run
+                }
+                
+                msg_id = self.sell_publisher.publish(payload)
+                if msg_id:
+                    results.append(f"✅ {stock_name}: {quantity}주 (msg: {msg_id})")
+                    success_count += 1
+                else:
+                    results.append(f"❌ {stock_name}: 발행 실패")
                     fail_count += 1
             
-            mode_prefix = "[DRY\\_RUN] " if effective_dry_run else ""
+            mode_prefix = "[DRY_RUN] " if effective_dry_run else ""
             
-            return f"""🛑 *{mode_prefix}전체 청산 완료*
+            return f"""🛑 *{mode_prefix}전체 청산 요청을 접수했습니다.*
 
-✅ 성공: {success_count}건
-❌ 실패: {fail_count}건
+✅ 발행 성공: {success_count}건
+❌ 발행 실패: {fail_count}건
 
-*결과:*
-""" + '\n'.join(results[:10])  # 최대 10개만 표시
+*결과(최대 10개):*
+""" + '\n'.join(results[:10])
             
         except Exception as e:
             logger.error(f"전체 청산 오류: {e}", exc_info=True)
@@ -1043,29 +1044,17 @@ class CommandHandler:
     
     def _handle_help(self, cmd: dict, dry_run: bool) -> str:
         """도움말"""
-        return """📚 *Ultra Jennie 명령어*
+        return """📚 *Ultra Jennie 명령어 (24개)*
 
-*매매 제어*
-/pause - 매수 중지
-/resume - 매수 재개
-/stop 확인 - 긴급 전체 중지
-/dryrun on/off - 테스트 모드
+_(매수/매도는 실행 서비스로 큐 전송 후 처리됩니다)_ 
 
-*조회*
-/status - 시스템 상태
-/portfolio - 보유 종목
-/pnl - 오늘 손익
-/balance - 계좌 잔고
-/price 종목명 - 현재가
-
-*알림*
-/mute 분 - N분간 알림 끄기
-/unmute - 알림 켜기
-
-*설정*
-/minscore 점수 - 최소 LLM 점수
-/maxbuy 횟수 - 일일 최대 매수
-/config - 현재 설정 조회"""
+*매매 제어*: /pause /resume /stop 확인 /dryrun on|off
+*수동 매매*: /buy 종목 [수량] /sell 종목 [수량|전량] /sellall 확인
+*관심종목*: /watch 종목 /unwatch 종목 /watchlist
+*조회*: /status /portfolio /pnl /balance /price 종목
+*알림*: /mute 분 /unmute /alert 종목 가격 /alerts
+*설정*: /risk conservative|moderate|aggressive /minscore 점수 /maxbuy 횟수 /config
+*도움말*: /help /help 명령어"""
     
     # ============================================================================
     # 유틸리티
@@ -1093,3 +1082,42 @@ class CommandHandler:
         except Exception as e:
             logger.error(f"종목 검색 오류: {e}")
             return (None, None)
+
+    # ============================================================================
+    # 보호 로직 (Rate limiting, 일일 수동 거래 제한)
+    # ============================================================================
+    def _is_rate_limited(self, chat_id: Optional[int]) -> bool:
+        """명령 최소 간격 제한"""
+        if chat_id is None:
+            return False
+        r = redis_cache.get_redis_connection()
+        if not r:
+            return False
+        key = f"telegram:rl:{chat_id}"
+        try:
+            last_ts = r.get(key)
+            now = int(time.time())
+            if last_ts and now - int(last_ts) < self.min_command_interval:
+                return True
+            r.setex(key, self.min_command_interval, now)
+        except Exception:
+            return False
+        return False
+
+    def _check_manual_trade_limit(self, cmd: dict) -> Optional[str]:
+        """일일 수동 거래 횟수 제한을 체크하고 카운트 증가"""
+        chat_id = cmd.get('chat_id')
+        if chat_id is None:
+            return None
+        r = redis_cache.get_redis_connection()
+        if not r:
+            return None
+        key = f"telegram:manual_trades:{datetime.now().strftime('%Y%m%d')}:{chat_id}"
+        try:
+            count = int(r.get(key) or 0)
+            if count >= self.manual_trade_daily_limit:
+                return f"⛔ 일일 수동 거래 한도를 초과했습니다. (최대 {self.manual_trade_daily_limit}건)"
+            r.setex(key, 86400, count + 1)
+        except Exception:
+            return None
+        return None

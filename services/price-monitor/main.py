@@ -54,6 +54,7 @@ from shared.scheduler_runtime import (
     SchedulerJobMessage,
 )
 from shared.scheduler_client import mark_job_run
+from shared.notification import TelegramBot
 
 from monitor import PriceMonitor
 
@@ -111,22 +112,24 @@ def initialize_service():
         # 3. ConfigManager 초기화
         config_manager = ConfigManager(db_conn=None, cache_ttl=300)
         
-        # 4. 매도 요청 Publisher 초기화 (RabbitMQ)
+        # 4. Telegram Bot (가격 알림용, 선택)
+        telegram_token = auth.get_secret("telegram_bot_token") if auth.get_secret("telegram_bot_token") else os.getenv("TELEGRAM_BOT_TOKEN")
+        telegram_chat_id = auth.get_secret("telegram_chat_id") if auth.get_secret("telegram_chat_id") else os.getenv("TELEGRAM_CHAT_ID")
+        telegram_bot = TelegramBot(token=telegram_token, chat_id=telegram_chat_id) if telegram_token and telegram_chat_id else None
+        
+        # 5. 매도 요청 Publisher 초기화 (RabbitMQ)
         rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
         rabbitmq_sell_queue = os.getenv("RABBITMQ_QUEUE_SELL_ORDERS", "sell-orders")
-        
-        # RabbitMQPublisher는 이제 shared/rabbitmq.py에 있음
-        # 인터페이스가 create_task -> publish로 변경됨에 유의 (어댑터 필요할 수도 있음)
-        # 하지만 shared.rabbitmq.RabbitMQPublisher.publish 메소드가 기존 create_task와 유사하게 동작하도록 수정함
         
         tasks_publisher = RabbitMQPublisher(amqp_url=rabbitmq_url, queue_name=rabbitmq_sell_queue)
         logger.info("✅ RabbitMQ Publisher 초기화 완료 (queue=%s)", rabbitmq_sell_queue)
         
-        # 5. Price Monitor 초기화
+        # 6. Price Monitor 초기화
         price_monitor = PriceMonitor(
             kis=kis,
             config=config_manager,
-            tasks_publisher=tasks_publisher
+            tasks_publisher=tasks_publisher,
+            telegram_bot=telegram_bot
         )
         logger.info("✅ Price Monitor 초기화 완료")
         
