@@ -117,12 +117,12 @@ class TestJennieBrainInit:
         assert brain.provider_gemini is not None
         assert brain.provider == brain.provider_gemini  # 기본 Provider
     
-    @patch('shared.llm_providers.build_llm_provider')
-    def test_init_gemini_fail_graceful(self, mock_build_provider):
+    @patch('shared.llm.ClaudeLLMProvider', side_effect=Exception("Claude Error"))
+    @patch('shared.llm.OpenAILLMProvider', side_effect=Exception("OpenAI Error"))  
+    @patch('shared.llm.build_llm_provider', side_effect=Exception("API Error"))
+    def test_init_gemini_fail_graceful(self, mock_build_provider, mock_openai, mock_claude):
         """Gemini 실패 시 graceful handling"""
         from shared.llm import JennieBrain
-        
-        mock_build_provider.side_effect = Exception("API Error")
         
         brain = JennieBrain('project', 'gemini-secret')
         
@@ -431,10 +431,11 @@ class TestRunDebateSession:
     """Bull vs Bear 토론 테스트"""
     
     def test_debate_session_openai(self, mock_brain, sample_stock_info):
-        """OpenAI로 토론"""
+        """Claude로 토론 (OpenAI는 폴백)"""
         sample_stock_info['news_reason'] = 'AI 반도체 호재'
         
-        mock_brain.provider_openai.generate_json.return_value = {
+        # [v4.2] Claude가 1순위
+        mock_brain.provider_claude.generate_json.return_value = {
             'debate_log': 'Bull: 이 종목 PER 8배야!\nBear: 밸류트랩일 수 있어.\nBull: 수주 3조야!'
         }
         
@@ -444,8 +445,8 @@ class TestRunDebateSession:
         assert 'Bear' in result
     
     def test_debate_session_gemini_fallback(self, mock_brain, sample_stock_info):
-        """OpenAI 없으면 Gemini로 폴백"""
-        mock_brain.provider_openai = None
+        """Claude 없으면 Gemini로 폴백"""
+        mock_brain.provider_claude = None
         sample_stock_info['news_reason'] = 'Test news'
         
         mock_brain.provider_gemini.generate_json.return_value = {
@@ -477,11 +478,12 @@ class TestRunJudgeScoring:
     """Judge 최종 판결 테스트"""
     
     def test_judge_scoring_openai(self, mock_brain, sample_stock_info):
-        """OpenAI로 판결"""
+        """Claude로 판결 (OpenAI는 폴백)"""
         sample_stock_info['news_reason'] = 'Good news'
         debate_log = "Bull: Good!\nBear: Bad!\nBull: Very good!"
         
-        mock_brain.provider_openai.generate_json.return_value = {
+        # [v4.2] Claude가 1순위
+        mock_brain.provider_claude.generate_json.return_value = {
             'score': 75,
             'grade': 'B',
             'reason': 'Bull이 우세, 매수 추천'
@@ -493,8 +495,8 @@ class TestRunJudgeScoring:
         assert result['grade'] == 'B'
     
     def test_judge_scoring_gemini_fallback(self, mock_brain, sample_stock_info):
-        """OpenAI 없으면 Gemini로 폴백"""
-        mock_brain.provider_openai = None
+        """Claude 없으면 Gemini로 폴백"""
+        mock_brain.provider_claude = None
         sample_stock_info['news_reason'] = 'Test'
         
         mock_brain.provider_gemini.generate_json.return_value = {
@@ -516,10 +518,11 @@ class TestV5HybridScoring:
     """v5 하이브리드 스코어링 테스트"""
     
     def test_analysis_score_v5_with_quant(self, mock_brain, sample_stock_info):
-        """정량 컨텍스트 포함 분석"""
+        """정량 컨텍스트 포함 분석 - Gemini 우선"""
         quant_context = "정량 점수: 72점\n조건부 승률: 65%"
         
-        mock_brain.provider_claude.generate_json.return_value = {
+        # [v4.2] Gemini가 1순위
+        mock_brain.provider_gemini.generate_json.return_value = {
             'score': 78,
             'grade': 'B',
             'reason': '정량 72점 + 뉴스 긍정'
@@ -530,8 +533,8 @@ class TestV5HybridScoring:
         assert result['score'] == 78
     
     def test_analysis_score_v5_without_quant(self, mock_brain, sample_stock_info):
-        """정량 컨텍스트 없으면 기존 방식"""
-        mock_brain.provider_claude.generate_json.return_value = {
+        """정량 컨텍스트 없으면 기존 방식 - Gemini 우선"""
+        mock_brain.provider_gemini.generate_json.return_value = {
             'score': 70,
             'grade': 'B',
             'reason': '기존 분석'
@@ -542,12 +545,13 @@ class TestV5HybridScoring:
         assert result['score'] == 70
     
     def test_judge_scoring_v5_with_quant(self, mock_brain, sample_stock_info):
-        """v5 Judge with 정량 컨텍스트"""
+        """v5 Judge with 정량 컨텍스트 - Claude 우선"""
         sample_stock_info['news_reason'] = 'News'
         quant_context = "정량 점수: 80점"
         debate_log = "Bull vs Bear"
         
-        mock_brain.provider_openai.generate_json.return_value = {
+        # [v4.2] Claude가 1순위
+        mock_brain.provider_claude.generate_json.return_value = {
             'score': 82,
             'grade': 'A',
             'reason': '정량 + 토론 종합'

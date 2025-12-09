@@ -48,8 +48,8 @@ def sample_response_schema():
 class TestGeminiLLMProvider:
     """Gemini LLM Provider 테스트"""
     
-    @patch('shared.llm_providers.auth.get_secret')
-    @patch('shared.llm_providers.genai.configure')
+    @patch('shared.auth.get_secret')
+    @patch('google.generativeai.configure')
     def test_init_success(self, mock_configure, mock_get_secret, mock_safety_settings):
         """초기화 성공"""
         from shared.llm import GeminiLLMProvider
@@ -66,7 +66,7 @@ class TestGeminiLLMProvider:
         assert provider.name == 'gemini'
         mock_configure.assert_called_once_with(api_key='fake-gemini-api-key')
     
-    @patch('shared.llm_providers.auth.get_secret')
+    @patch('shared.auth.get_secret')
     def test_init_missing_api_key(self, mock_get_secret, mock_safety_settings):
         """API 키 없으면 RuntimeError"""
         from shared.llm import GeminiLLMProvider
@@ -82,9 +82,9 @@ class TestGeminiLLMProvider:
         
         assert 'Secret' in str(exc_info.value) or '로드 실패' in str(exc_info.value)
     
-    @patch('shared.llm_providers.auth.get_secret')
-    @patch('shared.llm_providers.genai.configure')
-    @patch('shared.llm_providers.genai.GenerativeModel')
+    @patch('shared.auth.get_secret')
+    @patch('google.generativeai.configure')
+    @patch('google.generativeai.GenerativeModel')
     def test_generate_json_success(self, mock_model_class, mock_configure, mock_get_secret, 
                                     mock_safety_settings, sample_response_schema):
         """generate_json 성공"""
@@ -110,9 +110,9 @@ class TestGeminiLLMProvider:
         assert result['score'] == 75
         assert result['grade'] == 'B'
     
-    @patch('shared.llm_providers.auth.get_secret')
-    @patch('shared.llm_providers.genai.configure')
-    @patch('shared.llm_providers.genai.GenerativeModel')
+    @patch('shared.auth.get_secret')
+    @patch('google.generativeai.configure')
+    @patch('google.generativeai.GenerativeModel')
     def test_generate_json_fallback(self, mock_model_class, mock_configure, mock_get_secret,
                                      mock_safety_settings, sample_response_schema):
         """첫 번째 모델 실패 시 폴백 모델로 재시도"""
@@ -145,9 +145,9 @@ class TestGeminiLLMProvider:
         assert result['score'] == 60
         assert result['reason'] == 'Fallback'
     
-    @patch('shared.llm_providers.auth.get_secret')
-    @patch('shared.llm_providers.genai.configure')
-    @patch('shared.llm_providers.genai.GenerativeModel')
+    @patch('shared.auth.get_secret')
+    @patch('google.generativeai.configure')
+    @patch('google.generativeai.GenerativeModel')
     def test_generate_json_all_fail(self, mock_model_class, mock_configure, mock_get_secret,
                                      mock_safety_settings, sample_response_schema):
         """모든 모델 실패 시 RuntimeError"""
@@ -177,7 +177,7 @@ class TestGeminiLLMProvider:
 class TestOpenAILLMProvider:
     """OpenAI LLM Provider 테스트"""
     
-    @patch('shared.llm_providers.auth.get_secret')
+    @patch('shared.auth.get_secret')
     def test_init_success(self, mock_get_secret, mock_safety_settings):
         """초기화 성공"""
         from shared.llm import OpenAILLMProvider
@@ -206,7 +206,7 @@ class TestOpenAILLMProvider:
         assert provider._is_reasoning_model('gpt-4o') is False
         assert provider._is_reasoning_model('gpt-4o-mini') is False
     
-    @patch('shared.llm_providers.auth.get_secret')
+    @patch('shared.auth.get_secret')
     def test_generate_json_success(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """generate_json 성공"""
         from shared.llm import OpenAILLMProvider
@@ -238,7 +238,7 @@ class TestOpenAILLMProvider:
         assert result['score'] == 80
         assert result['grade'] == 'A'
     
-    @patch('shared.llm_providers.auth.get_secret')
+    @patch('shared.auth.get_secret')
     def test_generate_json_reasoning_model_no_temperature(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """Reasoning 모델은 temperature 파라미터 없음"""
         from shared.llm import OpenAILLMProvider
@@ -273,7 +273,7 @@ class TestOpenAILLMProvider:
 class TestClaudeLLMProvider:
     """Claude LLM Provider 테스트"""
     
-    @patch('shared.llm_providers.auth.get_secret')
+    @patch('shared.auth.get_secret')
     def test_init_success(self, mock_get_secret, mock_safety_settings):
         """초기화 성공"""
         from shared.llm import ClaudeLLMProvider
@@ -289,7 +289,7 @@ class TestClaudeLLMProvider:
         
         assert provider.fast_model == 'claude-haiku-4-5'
     
-    @patch('shared.llm_providers.auth.get_secret')
+    @patch('shared.auth.get_secret')
     def test_generate_json_success(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """generate_json 성공"""
         from shared.llm import ClaudeLLMProvider
@@ -318,7 +318,7 @@ class TestClaudeLLMProvider:
         assert result['score'] == 85
         assert result['grade'] == 'A'
     
-    @patch('shared.llm_providers.auth.get_secret')
+    @patch('shared.auth.get_secret')
     def test_generate_json_with_markdown(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """마크다운 코드블록 제거"""
         from shared.llm import ClaudeLLMProvider
@@ -349,8 +349,8 @@ class TestClaudeLLMProvider:
 class TestBuildLlmProvider:
     """LLM Provider 팩토리 함수 테스트"""
     
-    @patch('shared.llm_providers.auth.get_secret')
-    @patch('shared.llm_providers.genai.configure')
+    @patch('shared.auth.get_secret')
+    @patch('google.generativeai.configure')
     def test_build_gemini_provider(self, mock_configure, mock_get_secret, mock_safety_settings):
         """Gemini Provider 생성"""
         from shared.llm import build_llm_provider
@@ -361,26 +361,24 @@ class TestBuildLlmProvider:
         
         assert provider.name == 'gemini'
     
-    @patch('shared.llm_providers.auth.get_secret')
-    def test_build_openai_provider(self, mock_get_secret, mock_safety_settings, monkeypatch):
+    @patch('shared.auth.get_secret')
+    @patch('openai.OpenAI')
+    def test_build_openai_provider(self, mock_openai_class, mock_get_secret, mock_safety_settings, monkeypatch):
         """OpenAI Provider 생성"""
-        from shared.llm import build_llm_provider
+        from shared.llm_providers import build_llm_provider
         
         mock_get_secret.return_value = 'fake-api-key'
         monkeypatch.setenv('OPENAI_API_KEY_SECRET', 'openai-secret')
         
-        # OpenAI 클라이언트 mock
-        with patch('shared.llm_providers.OpenAILLMProvider') as mock_provider_class:
-            mock_provider_class.return_value = MagicMock()
-            mock_provider_class.return_value.name = 'openai'
-            
-            provider = build_llm_provider('project', 'gemini-secret', 'openai')
-            
-            assert provider.name == 'openai'
+        mock_openai_class.return_value = MagicMock()
+        
+        provider = build_llm_provider('project', 'gemini-secret', 'openai')
+        
+        assert provider.name == 'openai'
     
     def test_build_unsupported_provider(self, mock_safety_settings):
         """지원되지 않는 Provider 타입"""
-        from shared.llm import build_llm_provider
+        from shared.llm_providers import build_llm_provider
         
         with pytest.raises(ValueError) as exc_info:
             build_llm_provider('project', 'secret', 'unsupported_provider')
@@ -395,8 +393,8 @@ class TestBuildLlmProvider:
 class TestProviderProperties:
     """Provider 속성 테스트"""
     
-    @patch('shared.llm_providers.auth.get_secret')
-    @patch('shared.llm_providers.genai.configure')
+    @patch('shared.auth.get_secret')
+    @patch('google.generativeai.configure')
     def test_gemini_flash_model_name(self, mock_configure, mock_get_secret, mock_safety_settings, monkeypatch):
         """Gemini flash 모델명 확인"""
         from shared.llm import GeminiLLMProvider
@@ -408,8 +406,8 @@ class TestProviderProperties:
         
         assert provider.flash_model_name() == 'gemini-custom-flash'
     
-    @patch('shared.llm_providers.auth.get_secret')
-    @patch('shared.llm_providers.genai.configure')
+    @patch('shared.auth.get_secret')
+    @patch('google.generativeai.configure')
     def test_gemini_default_model_from_env(self, mock_configure, mock_get_secret, mock_safety_settings, monkeypatch):
         """환경변수에서 기본 모델명 로드"""
         from shared.llm import GeminiLLMProvider

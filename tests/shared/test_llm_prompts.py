@@ -398,9 +398,14 @@ class TestCompetitorBenefitPrompt:
     
     def test_inject_competitor_benefit_context(self):
         """경쟁사 수혜 컨텍스트 주입"""
+        from shared.llm import JennieBrain
+        
+        # JennieBrain 인스턴스 생성 (초기화 우회)
+        brain = object.__new__(JennieBrain)
+        
         base_prompt = "기존 분석 프롬프트입니다."
         
-        result = mock_brain._inject_competitor_benefit_context(
+        result = brain._inject_competitor_benefit_context(
             base_prompt,
             competitor_benefit_score=15,
             competitor_reason="쿠팡 개인정보 유출로 네이버 반사이익"
@@ -414,9 +419,13 @@ class TestCompetitorBenefitPrompt:
     
     def test_inject_competitor_benefit_context_zero_score(self):
         """수혜 점수 0이면 원본 반환"""
+        from shared.llm import JennieBrain
+        
+        brain = object.__new__(JennieBrain)
+        
         base_prompt = "기존 분석 프롬프트입니다."
         
-        result = mock_brain._inject_competitor_benefit_context(
+        result = brain._inject_competitor_benefit_context(
             base_prompt,
             competitor_benefit_score=0,
             competitor_reason=""
