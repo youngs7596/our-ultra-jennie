@@ -673,19 +673,140 @@ class CommandHandler:
             logger.error(f"전체 청산 오류: {e}", exc_info=True)
             return f"❌ 전체 청산 중 오류 발생: {e}"
 
-    
     # ============================================================================
-    # 관심종목 핸들러 (Phase 3에서 구현)
+    # 관심종목 핸들러
     # ============================================================================
     
     def _handle_watch(self, cmd: dict, dry_run: bool) -> str:
-        return "🚧 관심종목 추가 기능은 Phase 3에서 구현 예정입니다."
+        """관심종목 추가"""
+        args = cmd.get('args', [])
+        
+        if not args:
+            return """❓ *관심종목 추가 사용법*
+
+`/watch 종목명`
+
+*예시:*
+• `/watch 삼성전자`
+• `/watch 005930`"""
+        
+        stock_input = args[0]
+        
+        try:
+            # 1. 종목 코드 변환
+            stock_code, stock_name = self._resolve_stock(stock_input)
+            if not stock_code:
+                return f"❓ 종목을 찾을 수 없습니다: {stock_input}"
+            
+            # 2. 이미 관심종목인지 확인
+            with database.get_db_connection_context() as db_conn:
+                watchlist = database.get_active_watchlist(db_conn)
+            
+            if stock_code in watchlist:
+                return f"ℹ️ {stock_name}은(는) 이미 관심종목입니다."
+            
+            # 3. 관심종목 추가
+            candidate = {
+                'code': stock_code,
+                'name': stock_name,
+                'is_tradable': True,
+                'llm_score': 50,  # 기본 점수
+                'llm_reason': '[Telegram /watch 명령으로 수동 추가]'
+            }
+            
+            with database.get_db_connection_context() as db_conn:
+                database.save_to_watchlist(db_conn, [candidate])
+            
+            return f"✅ 관심종목에 추가되었습니다.\n\n📌 {stock_name} ({stock_code})"
+            
+        except Exception as e:
+            logger.error(f"관심종목 추가 오류: {e}", exc_info=True)
+            return f"❌ 관심종목 추가 실패: {e}"
     
     def _handle_unwatch(self, cmd: dict, dry_run: bool) -> str:
-        return "🚧 관심종목 제거 기능은 Phase 3에서 구현 예정입니다."
+        """관심종목 제거"""
+        args = cmd.get('args', [])
+        
+        if not args:
+            return """❓ *관심종목 제거 사용법*
+
+`/unwatch 종목명`
+
+*예시:*
+• `/unwatch 삼성전자`
+• `/unwatch 005930`"""
+        
+        stock_input = args[0]
+        
+        try:
+            # 1. 종목 코드 변환
+            stock_code, stock_name = self._resolve_stock(stock_input)
+            if not stock_code:
+                return f"❓ 종목을 찾을 수 없습니다: {stock_input}"
+            
+            # 2. 관심종목에서 제거
+            with database.get_db_connection_context() as db_conn:
+                cursor = db_conn.cursor()
+                cursor.execute("DELETE FROM WatchList WHERE STOCK_CODE = %s", [stock_code])
+                deleted = cursor.rowcount
+                db_conn.commit()
+                cursor.close()
+            
+            if deleted > 0:
+                return f"✅ 관심종목에서 제거되었습니다.\n\n🗑️ {stock_name} ({stock_code})"
+            else:
+                return f"ℹ️ {stock_name}은(는) 관심종목에 없습니다."
+            
+        except Exception as e:
+            logger.error(f"관심종목 제거 오류: {e}", exc_info=True)
+            return f"❌ 관심종목 제거 실패: {e}"
     
     def _handle_watchlist(self, cmd: dict, dry_run: bool) -> str:
-        return "🚧 관심종목 조회 기능은 Phase 3에서 구현 예정입니다."
+        """관심종목 조회"""
+        try:
+            with database.get_db_connection_context() as db_conn:
+                watchlist = database.get_active_watchlist(db_conn)
+            
+            if not watchlist:
+                return "📭 관심종목이 없습니다.\n\n`/watch 종목명`으로 추가하세요."
+            
+            lines = [f"📌 *관심종목* ({len(watchlist)}종목)\n"]
+            
+            # LLM 점수 순으로 정렬
+            sorted_items = sorted(
+                watchlist.items(),
+                key=lambda x: x[1].get('llm_score', 0),
+                reverse=True
+            )
+            
+            for i, (code, info) in enumerate(sorted_items[:15], 1):  # 최대 15개
+                name = info.get('name', code)
+                score = info.get('llm_score', 0)
+                tradable = "✅" if info.get('is_tradable', True) else "⏸️"
+                
+                # 점수에 따른 이모지
+                if score >= 80:
+                    score_emoji = "🔥"
+                elif score >= 60:
+                    score_emoji = "📈"
+                elif score >= 40:
+                    score_emoji = "➖"
+                else:
+                    score_emoji = "📉"
+                
+                lines.append(f"{i}. {tradable} {name} ({code}) {score_emoji} {score}점")
+            
+            if len(watchlist) > 15:
+                lines.append(f"\n... 외 {len(watchlist) - 15}개")
+            
+            lines.append(f"\n💡 `/unwatch 종목명`으로 제거")
+            
+            return '\n'.join(lines)
+            
+        except Exception as e:
+            logger.error(f"관심종목 조회 오류: {e}", exc_info=True)
+            return f"❌ 관심종목 조회 실패: {e}"
+
     
     # ============================================================================
     # 알림 제어 핸들러 (Phase 5에서 구현)
