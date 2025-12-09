@@ -96,6 +96,14 @@ def get_db_connection():
     return pool.raw_connection()
 
 
+def is_pool_initialized():
+    """
+    레거시 코드 호환용: DB 연결 풀 초기화 여부를 반환합니다.
+    """
+    global pool
+    return pool is not None
+
+
 # ============================================================================
 # [Config] CONFIG 테이블 관련 함수
 # ============================================================================

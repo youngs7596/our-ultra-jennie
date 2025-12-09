@@ -37,6 +37,7 @@ from shared.redis_cache import (
 from .core import (
     init_connection_pool,
     get_db_connection,
+    is_pool_initialized,
     get_config,
     get_all_config,
     set_config,
