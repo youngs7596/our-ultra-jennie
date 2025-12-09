@@ -54,12 +54,12 @@ def initialize_service():
         if not database.is_pool_initialized():
             logger.info("🔧 DB Connection Pool 초기화 중...")
             db_user = auth.get_secret(
-                os.getenv("SECRET_ID_ORACLE_DB_USER"), 
+                os.getenv("SECRET_ID_ORACLE_DB_USER") or "mariadb-user",
                 os.getenv("GCP_PROJECT_ID"),
                 use_cache=True
             )
             db_password = auth.get_secret(
-                os.getenv("SECRET_ID_ORACLE_DB_PASSWORD"), 
+                os.getenv("SECRET_ID_ORACLE_DB_PASSWORD") or "mariadb-password",
                 os.getenv("GCP_PROJECT_ID"),
                 use_cache=True
             )
