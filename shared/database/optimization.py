@@ -1,13 +1,14 @@
 """
-shared/database_optimization.py - 자동 파라미터 최적화 이력 관리 함수
+shared/database/optimization.py - 자동 파라미터 최적화 이력 관리 함수
 
 이 모듈은 OPTIMIZATION_HISTORY 테이블에서 파라미터 최적화 이력을 
 관리하는 함수들을 제공합니다.
+(기존 shared/database_optimization.py 이동)
 """
 
 import json
 import logging
-from shared.database_base import _is_mariadb
+from .core import _is_mariadb
 
 logger = logging.getLogger(__name__)
 
