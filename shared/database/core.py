@@ -82,6 +82,20 @@ def init_connection_pool(
     return pool
 
 
+def get_db_connection():
+    """
+    레거시 코드 호환용: DB 연결 객체를 반환합니다.
+    (scout.py 등에서 사용)
+    """
+    global pool
+    if pool is None:
+        init_connection_pool()
+    
+    # SQLAlchemy Engine에서 Raw DBAPI Connection(PyMySQL Connection)을 가져옴
+    # 이렇게 해야 .cursor() 메소드를 사용할 수 있음
+    return pool.raw_connection()
+
+
 # ============================================================================
 # [Config] CONFIG 테이블 관련 함수
 # ============================================================================
