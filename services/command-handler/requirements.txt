@@ -22,3 +22,5 @@ websocket-client==1.8.0
 pytz
 filelock==3.14.0
 redis
+pymysql>=1.0.0
+pika==1.3.2
