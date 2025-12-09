@@ -1,0 +1,195 @@
+"""
+shared/database_price.py
+
+주가/가격/펀더멘털 저장 및 조회 관련 유틸을 분리한 모듈입니다.
+기존 shared/database.py는 하위 호환을 위해 이 모듈을 import/re-export합니다.
+"""
+
+import logging
+from datetime import datetime
+from typing import List
+
+import pandas as pd
+
+from .database_base import _is_mariadb
+
+logger = logging.getLogger(__name__)
+
+
+def save_all_daily_prices(connection, all_daily_prices_params: List[dict]):
+    """일봉 데이터 Bulk 저장 (MariaDB/Oracle 호환)"""
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        
+        if _is_mariadb():
+            # MariaDB: INSERT ... ON DUPLICATE KEY UPDATE
+            sql = """
+            INSERT INTO STOCK_DAILY_PRICES (STOCK_CODE, PRICE_DATE, CLOSE_PRICE, HIGH_PRICE, LOW_PRICE)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                CLOSE_PRICE = VALUES(CLOSE_PRICE),
+                HIGH_PRICE = VALUES(HIGH_PRICE),
+                LOW_PRICE = VALUES(LOW_PRICE)
+            """
+            insert_data = []
+            for p in all_daily_prices_params:
+                insert_data.append((
+                    p.get('p_code', p.get('stock_code')),
+                    p.get('p_date', p.get('price_date')),
+                    p.get('p_price', p.get('close_price')),
+                    p.get('p_high', p.get('high_price')),
+                    p.get('p_low', p.get('low_price'))
+                ))
+            cursor.executemany(sql, insert_data)
+        else:
+            # Oracle: MERGE
+            sql_merge = """
+            MERGE /*+ NO_PARALLEL */ INTO STOCK_DAILY_PRICES t
+            USING (SELECT TO_DATE(:p_date, 'YYYY-MM-DD') AS price_date, :p_code AS stock_code, 
+                          :p_price AS close_price, :p_high AS high_price, :p_low AS low_price FROM DUAL) s
+            ON (t.STOCK_CODE = s.stock_code AND t.PRICE_DATE = s.price_date)
+            WHEN MATCHED THEN
+                UPDATE SET t.CLOSE_PRICE = s.close_price, t.HIGH_PRICE = s.high_price, t.LOW_PRICE = s.low_price
+            WHEN NOT MATCHED THEN
+                INSERT (STOCK_CODE, PRICE_DATE, CLOSE_PRICE, HIGH_PRICE, LOW_PRICE)
+                VALUES (s.stock_code, s.price_date, s.close_price, s.high_price, s.low_price)
+            """
+            cursor.executemany(sql_merge, all_daily_prices_params)
+        
+        connection.commit()
+        logger.info(f"✅ DB: 모든 종목의 일봉 데이터 {len(all_daily_prices_params)}건 Bulk 저장 완료.")
+    except Exception as e:
+        logger.error(f"❌ DB: 모든 종목 일봉 데이터 Bulk 저장 실패! (에러: {e})")
+        if connection:
+            connection.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+
+
+def update_all_stock_fundamentals(connection, all_fundamentals_params: List[dict]):
+    """주요 재무지표(PER, PBR, ROE) Bulk 저장/업데이트"""
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        
+        if _is_mariadb():
+            sql = """
+            INSERT INTO STOCK_FUNDAMENTALS (STOCK_CODE, TRADE_DATE, PER, PBR, ROE, MARKET_CAP)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                PER = VALUES(PER),
+                PBR = VALUES(PBR),
+                ROE = VALUES(ROE),
+                MARKET_CAP = VALUES(MARKET_CAP)
+            """
+            insert_data = []
+            for p in all_fundamentals_params:
+                insert_data.append((
+                    p.get('stock_code'),
+                    p.get('trade_date'),
+                    p.get('per'),
+                    p.get('pbr'),
+                    p.get('roe'),
+                    p.get('market_cap'),
+                ))
+            cursor.executemany(sql, insert_data)
+        else:
+            sql_merge = """
+            MERGE /*+ NO_PARALLEL */ INTO STOCK_FUNDAMENTALS t
+            USING (SELECT TO_DATE(:trade_date, 'YYYY-MM-DD') AS trade_date,
+                          :stock_code AS stock_code, :per AS per, :pbr AS pbr,
+                          :roe AS roe, :market_cap AS market_cap FROM DUAL) s
+            ON (t.STOCK_CODE = s.stock_code AND t.TRADE_DATE = s.trade_date)
+            WHEN MATCHED THEN
+                UPDATE SET t.PER = s.per, t.PBR = s.pbr, t.ROE = s.roe, t.MARKET_CAP = s.market_cap
+            WHEN NOT MATCHED THEN
+                INSERT (STOCK_CODE, TRADE_DATE, PER, PBR, ROE, MARKET_CAP)
+                VALUES (s.stock_code, s.trade_date, s.per, s.pbr, s.roe, s.market_cap)
+            """
+            cursor.executemany(sql_merge, all_fundamentals_params)
+        
+        connection.commit()
+        logger.info(f"✅ DB: 재무지표 {len(all_fundamentals_params)}건 저장/업데이트 완료.")
+    except Exception as e:
+        logger.error(f"❌ DB: 재무지표 저장 실패! (에러: {e})")
+        if connection:
+            connection.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+
+
+def get_daily_prices(connection, stock_code, limit=30, table_name="STOCK_DAILY_PRICES_3Y"):
+    cursor = connection.cursor()
+    cursor.execute(f"""
+        SELECT PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
+        FROM {table_name}
+        WHERE STOCK_CODE = %s
+        ORDER BY PRICE_DATE DESC
+        LIMIT %s
+    """, [stock_code, limit])
+    rows = cursor.fetchall()
+    cursor.close()
+    
+    if not rows:
+        return pd.DataFrame()
+    
+    if isinstance(rows[0], dict):
+        df = pd.DataFrame(rows)
+    else:
+        df = pd.DataFrame(rows, columns=[
+            "PRICE_DATE", "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "CLOSE_PRICE", "VOLUME"
+        ])
+    df = df.iloc[::-1]
+    return df
+
+
+def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, table_name: str = "STOCK_DAILY_PRICES_3Y"):
+    """
+    여러 종목의 일봉을 한 번에 조회하여 dict[code] = DataFrame 형태로 반환
+    """
+    if not stock_codes:
+        return {}
+    
+    cursor = connection.cursor()
+    placeholder = ','.join(['%s'] * len(stock_codes))
+    cursor.execute(f"""
+        SELECT STOCK_CODE, PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
+        FROM {table_name}
+        WHERE STOCK_CODE IN ({placeholder})
+        ORDER BY STOCK_CODE, PRICE_DATE DESC
+    """, stock_codes)
+    rows = cursor.fetchall()
+    cursor.close()
+    
+    if not rows:
+        return {}
+    
+    result = {code: [] for code in stock_codes}
+    
+    # rows를 code별로 묶기
+    for row in rows:
+        if isinstance(row, dict):
+            code = row['STOCK_CODE']
+            result[code].append(row)
+        else:
+            code = row[0]
+            result[code].append({
+                "STOCK_CODE": row[0],
+                "PRICE_DATE": row[1],
+                "OPEN_PRICE": row[2],
+                "HIGH_PRICE": row[3],
+                "LOW_PRICE": row[4],
+                "CLOSE_PRICE": row[5],
+                "VOLUME": row[6],
+            })
+    
+    # dict -> DataFrame 변환 및 날짜 오름차순
+    for code, items in result.items():
+        df = pd.DataFrame(items)
+        df = df.iloc[::-1]
+        result[code] = df
+    
+    return result
