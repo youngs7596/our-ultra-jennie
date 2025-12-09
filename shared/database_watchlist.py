@@ -53,18 +53,27 @@ def save_to_watchlist(connection, candidates_to_save):
         now = datetime.now(timezone.utc)
         
         # [v4.1] UPSERT 쿼리 (기존 종목은 UPDATE, 새 종목은 INSERT)
+        # [v4.2] 재무 데이터(PER, PBR 등) 추가
         if _is_mariadb():
             sql_upsert = """
             INSERT INTO WatchList (
                 STOCK_CODE, STOCK_NAME, CREATED_AT, IS_TRADABLE,
-                LLM_SCORE, LLM_REASON, LLM_UPDATED_AT
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                LLM_SCORE, LLM_REASON, LLM_UPDATED_AT,
+                PER, PBR, ROE, MARKET_CAP, SALES_GROWTH, EPS_GROWTH, FINANCIAL_UPDATED_AT
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 STOCK_NAME = VALUES(STOCK_NAME),
                 IS_TRADABLE = VALUES(IS_TRADABLE),
                 LLM_SCORE = VALUES(LLM_SCORE),
                 LLM_REASON = VALUES(LLM_REASON),
-                LLM_UPDATED_AT = VALUES(LLM_UPDATED_AT)
+                LLM_UPDATED_AT = VALUES(LLM_UPDATED_AT),
+                PER = VALUES(PER),
+                PBR = VALUES(PBR),
+                ROE = VALUES(ROE),
+                MARKET_CAP = VALUES(MARKET_CAP),
+                SALES_GROWTH = VALUES(SALES_GROWTH),
+                EPS_GROWTH = VALUES(EPS_GROWTH),
+                FINANCIAL_UPDATED_AT = VALUES(FINANCIAL_UPDATED_AT)
             """
         else:
             # Oracle: MERGE INTO 사용
@@ -110,7 +119,15 @@ def save_to_watchlist(connection, candidates_to_save):
                     1 if c.get('is_tradable', True) else 0,
                     llm_score,
                     llm_reason,
-                    now  # LLM_UPDATED_AT
+                    now,  # LLM_UPDATED_AT
+                    # [v4.2] 재무 데이터 추가
+                    c.get('per'),
+                    c.get('pbr'),
+                    c.get('roe'),
+                    c.get('market_cap'),
+                    c.get('sales_growth'),
+                    c.get('eps_growth'),
+                    now   # FINANCIAL_UPDATED_AT
                 )
                 cursor.execute(sql_upsert, params)
                 # rowcount: 1=INSERT, 2=UPDATE (MariaDB ON DUPLICATE KEY UPDATE 특성)

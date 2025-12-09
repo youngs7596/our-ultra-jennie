@@ -500,6 +500,14 @@ def _record_to_watchlist_entry(record: Dict) -> Dict:
         "llm_score": record.get("llm_score", 0),
         "llm_reason": record.get("llm_reason", ""),
         "llm_metadata": record.get("llm_metadata", {}),
+        # [v1.0] 재무 데이터 추가 (scout 파이프라인에서 전달됨)
+        "per": record.get("per"),
+        "pbr": record.get("pbr"),
+        "roe": record.get("roe"),
+        "market_cap": record.get("market_cap"),
+        "sales_growth": record.get("sales_growth"),
+        "eps_growth": record.get("eps_growth"),
+        "financial_updated_at": _utcnow().isoformat(),
     }
 
 

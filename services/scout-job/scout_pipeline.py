@@ -282,6 +282,9 @@ def process_phase23_judge_v5_task(phase1_result, brain):
         'condition_win_rate': quant_result.condition_win_rate,
     }
     
+    # [v1.0] 스냅샷에서 재무 데이터 추출
+    snapshot = phase1_result.get('snapshot') or {}
+    
     return {
         'code': code,
         'name': info['name'],
@@ -290,6 +293,13 @@ def process_phase23_judge_v5_task(phase1_result, brain):
         'llm_reason': reason,
         'approved': approved,
         'llm_metadata': metadata,
+        # 재무 데이터 추가
+        'per': snapshot.get('per'),
+        'pbr': snapshot.get('pbr'),
+        'roe': snapshot.get('roe'),
+        'market_cap': snapshot.get('market_cap'),
+        'sales_growth': snapshot.get('sales_growth'),
+        'eps_growth': snapshot.get('eps_growth'),
     }
 
 
