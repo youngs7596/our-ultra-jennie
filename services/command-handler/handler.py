@@ -832,10 +832,123 @@ class CommandHandler:
         return "🔔 알림이 다시 켜졌습니다."
     
     def _handle_alert(self, cmd: dict, dry_run: bool) -> str:
-        return "🚧 가격 알림 기능은 Phase 5에서 구현 예정입니다."
+        """가격 알림 설정"""
+        args = cmd.get('args', [])
+        
+        if not args:
+            return """❓ *가격 알림 설정 사용법*
+
+`/alert 종목명 목표가격`
+
+*예시:*
+• `/alert 삼성전자 80000` - 80,000원 도달 시 알림
+• `/alert 005930 75000` - 종목코드로 설정
+
+삭제: `/alert 삼성전자 삭제`"""
+        
+        if len(args) < 2:
+            return "❓ 종목과 목표가격을 모두 입력하세요.\n예: `/alert 삼성전자 80000`"
+        
+        stock_input = args[0]
+        action = args[1]
+        
+        try:
+            # 1. 종목 코드 변환
+            stock_code, stock_name = self._resolve_stock(stock_input)
+            if not stock_code:
+                return f"❓ 종목을 찾을 수 없습니다: {stock_input}"
+            
+            # 2. 삭제 명령인지 확인
+            if action in ['삭제', 'delete', 'remove', 'del']:
+                if redis_cache.delete_price_alert(stock_code):
+                    return f"🗑️ 가격 알림이 삭제되었습니다.\n\n{stock_name} ({stock_code})"
+                else:
+                    return f"ℹ️ {stock_name}에 설정된 알림이 없습니다."
+            
+            # 3. 목표 가격 파싱
+            try:
+                target_price = int(action.replace(',', '').replace('원', ''))
+            except ValueError:
+                return f"❓ 올바른 가격을 입력하세요: {action}"
+            
+            if target_price <= 0:
+                return "❓ 가격은 0보다 커야 합니다."
+            
+            # 4. 현재가 조회하여 알림 타입 결정
+            try:
+                snapshot = self.kis.get_stock_snapshot(stock_code)
+                current_price = snapshot.get('price', 0) if snapshot else 0
+                
+                if current_price > 0:
+                    if target_price > current_price:
+                        alert_type = "above"
+                        direction = "⬆️ 이상"
+                    else:
+                        alert_type = "below"
+                        direction = "⬇️ 이하"
+                else:
+                    alert_type = "above"
+                    direction = "도달"
+                    current_price = 0
+            except Exception:
+                alert_type = "above"
+                direction = "도달"
+                current_price = 0
+            
+            # 5. 알림 설정
+            redis_cache.set_price_alert(
+                stock_code=stock_code,
+                target_price=target_price,
+                stock_name=stock_name,
+                alert_type=alert_type
+            )
+            
+            result = f"""⏰ *가격 알림 설정 완료*
+
+📌 {stock_name} ({stock_code})
+🎯 목표가: {target_price:,.0f}원 {direction}"""
+            
+            if current_price > 0:
+                diff = target_price - current_price
+                diff_pct = (diff / current_price * 100) if current_price > 0 else 0
+                result += f"\n💵 현재가: {current_price:,.0f}원"
+                result += f"\n📊 차이: {diff:+,.0f}원 ({diff_pct:+.2f}%)"
+            
+            result += f"\n\n⏳ 7일간 유효 | 삭제: `/alert {stock_input} 삭제`"
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"가격 알림 설정 오류: {e}", exc_info=True)
+            return f"❌ 가격 알림 설정 실패: {e}"
     
     def _handle_alerts(self, cmd: dict, dry_run: bool) -> str:
-        return "🚧 알림 목록 기능은 Phase 5에서 구현 예정입니다."
+        """설정된 가격 알림 목록"""
+        try:
+            alerts = redis_cache.get_price_alerts()
+            
+            if not alerts:
+                return "📭 설정된 가격 알림이 없습니다.\n\n`/alert 종목명 목표가격`으로 설정하세요."
+            
+            lines = [f"⏰ *가격 알림 목록* ({len(alerts)}개)\n"]
+            
+            for code, info in alerts.items():
+                name = info.get('stock_name', code)
+                target = info.get('target_price', 0)
+                alert_type = info.get('alert_type', 'above')
+                direction = "⬆️" if alert_type == "above" else "⬇️"
+                
+                lines.append(f"• {name} ({code})")
+                lines.append(f"  {direction} {target:,.0f}원")
+            
+            lines.append(f"\n💡 삭제: `/alert 종목명 삭제`")
+            
+            return '\n'.join(lines)
+            
+        except Exception as e:
+            logger.error(f"가격 알림 목록 오류: {e}", exc_info=True)
+            return f"❌ 가격 알림 목록 조회 실패: {e}"
+
     
     # ============================================================================
     # 설정 핸들러 (Phase 6에서 구현)
