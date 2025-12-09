@@ -474,3 +474,323 @@ def get_all_competitor_benefits(redis_client=None) -> Dict[str, Dict[str, Any]]:
         logger.error(f"❌ [Redis] 경쟁사 수혜 전체 조회 실패: {e}")
         return {}
 
+
+# ============================================================================
+# Trading Control Flags (Telegram 명령어용)
+# ============================================================================
+
+# Redis Key 상수
+TRADING_PAUSE_KEY = "trading:pause"
+TRADING_STOP_KEY = "trading:stop"
+TRADING_DRYRUN_KEY = "trading:dryrun"
+CONFIG_MIN_LLM_SCORE_KEY = "config:min_llm_score"
+CONFIG_MAX_BUY_PER_DAY_KEY = "config:max_buy_per_day"
+NOTIFICATION_MUTE_KEY = "notification:mute"
+
+
+def set_trading_flag(
+    flag_name: str,
+    value: bool,
+    reason: str = "",
+    ttl_seconds: int = 86400,  # 기본 24시간
+    redis_client=None
+) -> bool:
+    """
+    [Redis] 트레이딩 제어 플래그를 설정합니다.
+    
+    Args:
+        flag_name: 플래그 이름 (pause, stop, dryrun)
+        value: True/False
+        reason: 설정 사유 (로깅용)
+        ttl_seconds: TTL (기본 24시간, 다음날 자동 해제)
+        redis_client: 테스트용 Redis 클라이언트
+    
+    Returns:
+        성공 여부
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return False
+    
+    key_map = {
+        "pause": TRADING_PAUSE_KEY,
+        "stop": TRADING_STOP_KEY,
+        "dryrun": TRADING_DRYRUN_KEY
+    }
+    
+    key = key_map.get(flag_name.lower())
+    if not key:
+        logger.error(f"❌ [Redis] 알 수 없는 플래그: {flag_name}")
+        return False
+    
+    try:
+        data = {
+            "value": value,
+            "reason": reason,
+            "set_at": datetime.now(timezone.utc).isoformat()
+        }
+        r.setex(key, ttl_seconds, json.dumps(data))
+        
+        status = "ON ✅" if value else "OFF ⭕"
+        logger.info(f"🚦 [Redis] Trading Flag 설정: {flag_name.upper()} = {status} (이유: {reason})")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Redis] Trading Flag 설정 실패: {e}")
+        return False
+
+
+def get_trading_flag(
+    flag_name: str,
+    redis_client=None
+) -> Dict[str, Any]:
+    """
+    [Redis] 트레이딩 제어 플래그를 조회합니다.
+    
+    Args:
+        flag_name: 플래그 이름 (pause, stop, dryrun)
+        redis_client: 테스트용 Redis 클라이언트
+    
+    Returns:
+        {'value': False, 'reason': '', 'set_at': None} (기본값)
+    """
+    default_result = {"value": False, "reason": "", "set_at": None}
+    
+    r = get_redis_connection(redis_client)
+    if not r:
+        return default_result
+    
+    key_map = {
+        "pause": TRADING_PAUSE_KEY,
+        "stop": TRADING_STOP_KEY,
+        "dryrun": TRADING_DRYRUN_KEY
+    }
+    
+    key = key_map.get(flag_name.lower())
+    if not key:
+        return default_result
+    
+    try:
+        data_json = r.get(key)
+        if data_json:
+            return json.loads(data_json)
+        return default_result
+    except Exception as e:
+        logger.error(f"❌ [Redis] Trading Flag 조회 실패: {e}")
+        return default_result
+
+
+def is_trading_paused(redis_client=None) -> bool:
+    """
+    [Redis] 매수가 일시 중지되었는지 확인합니다.
+    
+    Returns:
+        True면 매수 중지 상태
+    """
+    flag = get_trading_flag("pause", redis_client)
+    return flag.get("value", False)
+
+
+def is_trading_stopped(redis_client=None) -> bool:
+    """
+    [Redis] 전체 거래가 중단되었는지 확인합니다.
+    
+    Returns:
+        True면 전체 거래 중단 상태
+    """
+    flag = get_trading_flag("stop", redis_client)
+    return flag.get("value", False)
+
+
+def is_dryrun_enabled(redis_client=None) -> bool:
+    """
+    [Redis] DRY_RUN 모드가 활성화되었는지 확인합니다.
+    (환경변수 DRY_RUN보다 Redis 설정이 우선)
+    
+    Returns:
+        True면 DRY_RUN 모드
+    """
+    flag = get_trading_flag("dryrun", redis_client)
+    # Redis에 설정이 있으면 그 값 사용, 없으면 환경변수 사용
+    if flag.get("set_at"):
+        return flag.get("value", False)
+    
+    # 환경변수 fallback
+    return os.getenv("DRY_RUN", "true").lower() == "true"
+
+
+def get_all_trading_flags(redis_client=None) -> Dict[str, Dict[str, Any]]:
+    """
+    [Redis] 모든 트레이딩 플래그 상태를 조회합니다.
+    
+    Returns:
+        {'pause': {...}, 'stop': {...}, 'dryrun': {...}}
+    """
+    return {
+        "pause": get_trading_flag("pause", redis_client),
+        "stop": get_trading_flag("stop", redis_client),
+        "dryrun": get_trading_flag("dryrun", redis_client)
+    }
+
+
+def set_config_value(
+    config_name: str,
+    value: Any,
+    ttl_seconds: int = 86400,
+    redis_client=None
+) -> bool:
+    """
+    [Redis] 동적 설정값을 저장합니다.
+    
+    Args:
+        config_name: 설정 이름 (min_llm_score, max_buy_per_day)
+        value: 설정값
+        ttl_seconds: TTL (기본 24시간)
+        redis_client: 테스트용 Redis 클라이언트
+    
+    Returns:
+        성공 여부
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return False
+    
+    key_map = {
+        "min_llm_score": CONFIG_MIN_LLM_SCORE_KEY,
+        "max_buy_per_day": CONFIG_MAX_BUY_PER_DAY_KEY
+    }
+    
+    key = key_map.get(config_name.lower())
+    if not key:
+        logger.error(f"❌ [Redis] 알 수 없는 설정 이름: {config_name}")
+        return False
+    
+    try:
+        data = {
+            "value": value,
+            "set_at": datetime.now(timezone.utc).isoformat()
+        }
+        r.setex(key, ttl_seconds, json.dumps(data))
+        logger.info(f"⚙️ [Redis] 설정 변경: {config_name} = {value}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Redis] 설정 저장 실패: {e}")
+        return False
+
+
+def get_config_value(
+    config_name: str,
+    default_value: Any = None,
+    redis_client=None
+) -> Any:
+    """
+    [Redis] 동적 설정값을 조회합니다.
+    
+    Args:
+        config_name: 설정 이름
+        default_value: 기본값
+        redis_client: 테스트용 Redis 클라이언트
+    
+    Returns:
+        설정값 또는 기본값
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return default_value
+    
+    key_map = {
+        "min_llm_score": CONFIG_MIN_LLM_SCORE_KEY,
+        "max_buy_per_day": CONFIG_MAX_BUY_PER_DAY_KEY
+    }
+    
+    key = key_map.get(config_name.lower())
+    if not key:
+        return default_value
+    
+    try:
+        data_json = r.get(key)
+        if data_json:
+            data = json.loads(data_json)
+            return data.get("value", default_value)
+        return default_value
+    except Exception as e:
+        logger.error(f"❌ [Redis] 설정 조회 실패: {e}")
+        return default_value
+
+
+def set_notification_mute(
+    until_timestamp: int,
+    redis_client=None
+) -> bool:
+    """
+    [Redis] 알림 음소거를 설정합니다.
+    
+    Args:
+        until_timestamp: 음소거 해제 시각 (Unix timestamp)
+        redis_client: 테스트용 Redis 클라이언트
+    
+    Returns:
+        성공 여부
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return False
+    
+    try:
+        # TTL은 음소거 시간과 동일하게 설정
+        now = int(datetime.now(timezone.utc).timestamp())
+        ttl = max(0, until_timestamp - now)
+        
+        data = {
+            "until": until_timestamp,
+            "set_at": datetime.now(timezone.utc).isoformat()
+        }
+        r.setex(NOTIFICATION_MUTE_KEY, ttl, json.dumps(data))
+        logger.info(f"🔇 [Redis] 알림 음소거 설정: {ttl}초 동안")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Redis] 알림 음소거 설정 실패: {e}")
+        return False
+
+
+def is_notification_muted(redis_client=None) -> bool:
+    """
+    [Redis] 알림이 음소거 상태인지 확인합니다.
+    
+    Returns:
+        True면 음소거 상태
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return False
+    
+    try:
+        data_json = r.get(NOTIFICATION_MUTE_KEY)
+        if data_json:
+            data = json.loads(data_json)
+            until = data.get("until", 0)
+            now = int(datetime.now(timezone.utc).timestamp())
+            return now < until
+        return False
+    except Exception as e:
+        logger.error(f"❌ [Redis] 알림 음소거 상태 조회 실패: {e}")
+        return False
+
+
+def clear_notification_mute(redis_client=None) -> bool:
+    """
+    [Redis] 알림 음소거를 해제합니다.
+    
+    Returns:
+        성공 여부
+    """
+    r = get_redis_connection(redis_client)
+    if not r:
+        return False
+    
+    try:
+        r.delete(NOTIFICATION_MUTE_KEY)
+        logger.info("🔔 [Redis] 알림 음소거 해제")
+        return True
+    except Exception as e:
+        logger.error(f"❌ [Redis] 알림 음소거 해제 실패: {e}")
+        return False

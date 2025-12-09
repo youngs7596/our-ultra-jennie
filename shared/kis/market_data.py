@@ -23,20 +23,31 @@ class MarketData:
         # [v3.5] MOCK 모드에서 시간 제약 완화 옵션
         mock_skip_time_check = os.getenv("MOCK_SKIP_TIME_CHECK", "false").lower() == "true"
         
-        if not (0 <= now.weekday() <= 4 and 8 <= now.hour <= 16):
+        # [v3.6] 정규장 시간 체크: 09:00 ~ 15:30 (NXT 프리마켓 제외)
+        # KRX 정규장: 09:00~15:30
+        is_regular_trading_hours = (
+            0 <= now.weekday() <= 4 and  # 평일
+            (
+                (now.hour == 9) or  # 09:00 ~ 09:59
+                (10 <= now.hour <= 14) or  # 10:00 ~ 14:59
+                (now.hour == 15 and now.minute <= 30)  # 15:00 ~ 15:30
+            )
+        )
+        
+        if not is_regular_trading_hours:
             # MOCK 모드이고 시간 체크 스킵 옵션이 켜져있으면 통과
             if self.client.TRADING_MODE == "MOCK" and mock_skip_time_check:
                 logger.info("   (Market) ⚠️ MOCK 모드: 시간 체크 스킵 (MOCK_SKIP_TIME_CHECK=true)")
-                logger.info(f"   (Market) 현재 KST: {now.strftime('%Y-%m-%d %H:%M:%S')}, 요일: {now.weekday()}, 시간: {now.hour}")
+                logger.info(f"   (Market) 현재 KST: {now.strftime('%Y-%m-%d %H:%M:%S')}, 요일: {now.weekday()}, 시간: {now.hour}:{now.minute:02d}")
                 logger.info("   (Market) ✅ 테스트를 위해 장이 열려있는 것으로 간주합니다.")
                 return True
             
-            logger.info("   (Market) KIS API: 장 운영 시간이 아닙니다 (주말 또는 장 외 시간).")
-            logger.info(f"   (Market) 현재 KST: {now.strftime('%Y-%m-%d %H:%M:%S')}, 요일: {now.weekday()}, 시간: {now.hour}") 
+            logger.info("   (Market) KIS API: 정규장 운영 시간이 아닙니다 (09:00~15:30 외 시간).")
+            logger.info(f"   (Market) 현재 KST: {now.strftime('%Y-%m-%d %H:%M:%S')}, 요일: {now.weekday()}, 시간: {now.hour}:{now.minute:02d}") 
             return False
 
         if self.client.TRADING_MODE == "MOCK":
-            logger.info("   (Market) KIS API: MOCK 모드이며, 장 운영 시간(평일 08-16시)입니다.")
+            logger.info("   (Market) KIS API: MOCK 모드이며, 정규장 운영 시간(평일 09:00~15:30)입니다.")
             return True
 
         logger.info("   (Market) KIS API: REAL 모드, 휴장일 여부 확인 중...")
