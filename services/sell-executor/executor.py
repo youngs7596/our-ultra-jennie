@@ -11,6 +11,8 @@ from datetime import datetime, timezone, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import shared.database as database
+from shared.db.connection import session_scope
+from shared.db import repository as repo
 from shared.strategy_presets import (
     apply_preset_to_config,
     resolve_preset_for_regime,
@@ -74,21 +76,21 @@ class SellExecutor:
             if not preset_params:
                 preset_name, preset_params = resolve_preset_for_regime("SIDEWAYS")
             apply_preset_to_config(self.config, preset_params)
-            logger.info("전략 프리셋 적용: %s", preset_name)
+            logger.info(f"전략 프리셋 적용: {preset_name}")
             
             if risk_setting is None:
                 if shared_regime_cache is None:
                     shared_regime_cache = database.get_market_regime_cache()
                 if shared_regime_cache:
                     risk_setting = shared_regime_cache.get('risk_setting')
-            risk_setting = risk_setting or {}
+            risk_setting = risk_setting or {} # type: ignore
             market_context = {}
             if shared_regime_cache:
                 market_context = shared_regime_cache.get('market_context_dict', {}) or {}
 
-            with database.get_db_connection_context() as db_conn:
+            with session_scope() as session:
                 # 1. 보유 내역 확인
-                portfolio = database.get_active_portfolio(db_conn)
+                portfolio = repo.get_active_portfolio(session)
                 holding = next((h for h in portfolio if h['code'] == stock_code), None)
                 
                 if not holding:
@@ -97,7 +99,7 @@ class SellExecutor:
                 
                 # 1.5 중복 주문 체크 (Idempotency)
                 # 최근 매도 주문 확인 (중복 실행 방지)
-                if database.check_duplicate_order(db_conn, stock_code, 'SELL', time_window_minutes=10):
+                if repo.was_traded_recently(session, stock_code, hours=0.17): # 10분
                     logger.warning(f"⚠️ 최근 매도 주문 이력 존재: {stock_name}({stock_code}) - 중복 실행 방지")
                     return {"status": "skipped", "reason": f"Duplicate sell order detected for {stock_code}"}
                 
@@ -105,7 +107,7 @@ class SellExecutor:
                 trading_mode = os.getenv("TRADING_MODE", "MOCK")
                 if trading_mode == "MOCK":
                     # Mock 모드: DB에서 최근 종가 사용
-                    daily_prices = database.get_daily_prices(db_conn, stock_code, limit=1, table_name="STOCK_DAILY_PRICES_3Y")
+                    daily_prices = database.get_daily_prices(session, stock_code, limit=1, table_name="STOCK_DAILY_PRICES_3Y")
                     if daily_prices.empty:
                         logger.error("가격 조회 실패")
                         return {"status": "error", "reason": "Failed to get price"}
@@ -141,10 +143,10 @@ class SellExecutor:
                 # RAG 캐시 신선도 검증
                 rag_context = "최신 뉴스 없음"
                 is_fresh = False
-                last_updated = None
+                last_updated: Optional[datetime] = None
                 try:
                     rag_context, is_fresh, last_updated = database.get_rag_context_with_validation(
-                        db_conn, stock_code, max_age_hours=24
+                        session, stock_code, max_age_hours=24
                     )
                     if is_fresh:
                         logger.info(f"✅ [{stock_code}] 신선한 RAG 캐시 사용 (업데이트: {last_updated})")
@@ -189,7 +191,7 @@ class SellExecutor:
                 
                 # 5. DB 업데이트 (복기용 지표 포함)
                 self._record_sell_trade(
-                    db_conn=db_conn,
+                    session=session,
                     stock_code=stock_code,
                     stock_name=stock_name,
                     quantity=quantity,
@@ -255,7 +257,7 @@ class SellExecutor:
             logger.error(f"❌ 매도 처리 중 오류: {e}", exc_info=True)
             return {"status": "error", "reason": str(e)}
     
-    def _record_sell_trade(self, db_conn, stock_code: str, stock_name: str,
+    def _record_sell_trade(self, session, stock_code: str, stock_name: str,
                           quantity: int, sell_price: float, buy_price: float,
                           profit_pct: float, profit_amount: float, sell_reason: str,
                           order_no: str, holding: dict, key_metrics_dict: dict,
@@ -264,7 +266,7 @@ class SellExecutor:
         try:
             # execute_trade_and_log 사용 (Portfolio + TradeLog 통합 처리)
             database.execute_trade_and_log(
-                connection=db_conn,
+                connection=session,
                 trade_type='SELL',
                 stock_info={'id': holding['id'], 'code': stock_code, 'name': stock_name},
                 quantity=quantity,
@@ -279,9 +281,9 @@ class SellExecutor:
             # 성과 통계 업데이트 (선택적)
             if not dry_run and 'buy_date' in holding:
                 try:
-                    holding_days = (datetime.now() - datetime.strptime(holding['buy_date'], '%Y%m%d')).days
+                    holding_days = (datetime.now(timezone.utc) - holding['created_at']).days
                     database.update_performance_stats(
-                        db_conn=db_conn,
+                        db_conn=session,
                         stock_code=stock_code,
                         profit_pct=profit_pct,
                         profit_amount=profit_amount,
@@ -294,4 +296,3 @@ class SellExecutor:
         except Exception as e:
             logger.error(f"거래 기록 오류: {e}", exc_info=True)
             raise
-

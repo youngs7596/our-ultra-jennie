@@ -6,6 +6,7 @@
 import logging
 from typing import Dict, Optional
 from . import database
+from .db.connection import session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -56,17 +57,16 @@ class SectorClassifier:
         # db_pool_initialized는 DB 풀 사용 가능 여부를 나타냄
         if self.db_pool_initialized:
             try:
+                from .db.models import StockMaster
                 # [수정] SECTOR_KOSPI200 컬럼을 우선적으로 조회
-                with database.get_db_connection_context() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute("SELECT SECTOR_KOSPI200 FROM STOCK_MASTER WHERE STOCK_CODE = :1", [stock_code])
-                        result = cursor.fetchone()
-                        if result and result[0] and result[0] not in ('etc', '미분류'):
-                            sector = result[0]
-                            logger.debug(f"   [Sector] DB에서 '{stock_name}' 섹터 조회 (SECTOR_KOSPI200): {sector}")
-                        else:
-                            # DB에 없거나 'etc', '미분류'인 경우, 종목명 기반 추론으로 Fallback
-                            sector = self._infer_sector_from_name(stock_name)
+                with session_scope(readonly=True) as session:
+                    result = session.query(StockMaster.sector_kospi200).filter(StockMaster.stock_code == stock_code).scalar()
+                    if result and result not in ('etc', '미분류'):
+                        sector = result
+                        logger.debug(f"   [Sector] DB에서 '{stock_name}' 섹터 조회 (SECTOR_KOSPI200): {sector}")
+                    else:
+                        # DB에 없거나 'etc', '미분류'인 경우, 종목명 기반 추론으로 Fallback
+                        sector = self._infer_sector_from_name(stock_name)
             except Exception as e:
                 logger.warning(f"   [Sector] DB 조회 실패, 종목명 기반 추론으로 대체: {e}")
                 sector = self._infer_sector_from_name(stock_name)

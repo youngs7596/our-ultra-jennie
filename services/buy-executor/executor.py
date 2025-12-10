@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import shared.database as database
+from shared.db.connection import session_scope
+from shared.db import repository as repo
 import shared.auth as auth
 from shared.position_sizing import PositionSizer
 from shared.portfolio_diversification import DiversificationChecker
@@ -44,10 +46,6 @@ class BuyExecutor:
         self.sector_classifier = SectorClassifier(kis, db_pool_initialized=True)
         self.diversification_checker = DiversificationChecker(config, self.sector_classifier)
         self.market_regime_detector = MarketRegimeDetector()
-    
-    def _get_db_connection(self):
-        """DB 연결 생성 (SQLAlchemy 사용)"""
-        return database.get_db_connection()
 
     def process_buy_signal(self, scan_result: dict, dry_run: bool = True) -> dict:
         """
@@ -72,13 +70,7 @@ class BuyExecutor:
         """
         logger.info("=== 매수 신호 처리 시작 ===")
         
-        # DB 연결
-        db_conn = self._get_db_connection()
-        if not db_conn:
-            logger.error("❌ DB 연결 실패")
-            return {"status": "error", "reason": "Database connection failed"}
-
-        try:
+        with session_scope() as session:
             # 1. 후보 확인
             candidates = scan_result.get('candidates', [])
             if not candidates:
@@ -89,7 +81,7 @@ class BuyExecutor:
             shared_regime_cache = None
             if (market_regime in (None, 'UNKNOWN') or
                     not scan_result.get('strategy_preset') or
-                    not scan_result.get('risk_setting')):
+                    not scan_result.get('risk_setting')): # [v3.7] database -> repo
                 shared_regime_cache = database.get_market_regime_cache()
                 if shared_regime_cache:
                     market_regime = shared_regime_cache.get('regime', market_regime)
@@ -111,14 +103,14 @@ class BuyExecutor:
             logger.info("전략 프리셋 적용: %s", preset_name)
             
             # 2. 안전장치 체크
-            safety_check = self._check_safety_constraints(db_conn)
+            safety_check = self._check_safety_constraints(session)
             if not safety_check['allowed']:
                 logger.warning(f"⚠️ 안전장치 발동: {safety_check['reason']}")
                 return {"status": "skipped", "reason": safety_check['reason']}
             
             # 2.5 중복 주문 및 보유 여부 체크 (Idempotency)
             # 이미 보유 중인지 확인
-            current_portfolio = database.get_active_portfolio(db_conn)
+            current_portfolio = repo.get_active_portfolio(session)
             holding_codes = [p['code'] for p in current_portfolio]
             
             # LLM 랭킹 전, 후보 중 이미 보유한 종목 제외
@@ -133,7 +125,7 @@ class BuyExecutor:
             for candidate in candidates:
                 c_code = candidate.get('stock_code', candidate.get('code'))
                 c_name = candidate.get('stock_name', candidate.get('name'))
-                if database.check_duplicate_order(db_conn, c_code, 'BUY', time_window_minutes=10):
+                if repo.was_traded_recently(session, c_code, hours=0.17): # 10분 = 0.17시간
                     logger.warning(f"⚠️ 최근 매수 주문 이력 존재: {c_name}({c_code}) - 중복 실행 방지")
                     return {"status": "skipped", "reason": f"Duplicate order detected for {c_code}"}
             
@@ -242,7 +234,7 @@ class BuyExecutor:
                 max_stock_pct = 20.0
                 logger.info(f"🚀 [Dynamic Limits] Strong Bull Market: Sector Limit -> 50%, Stock Limit -> 20%")
 
-            is_approved, div_result = self._check_diversification(
+            is_approved, div_result = self._check_diversification(session,
                 selected_candidate, current_portfolio, available_cash, position_size, current_price, db_conn,
                 override_max_sector_pct=max_sector_pct, override_max_stock_pct=max_stock_pct
             )
@@ -274,7 +266,7 @@ class BuyExecutor:
                             position_size = new_qty
                             
                             # 재검증 (혹시 모를 다른 규칙 위반 확인)
-                            is_approved_retry, _ = self._check_diversification(
+                            is_approved_retry, _ = self._check_diversification(session,
                                 selected_candidate, current_portfolio, available_cash, position_size, current_price, db_conn,
                                 override_max_sector_pct=max_sector_pct, override_max_stock_pct=max_stock_pct
                             )
@@ -305,7 +297,7 @@ class BuyExecutor:
                         position_size = new_qty
                         
                         # 재검증
-                        is_approved_retry, _ = self._check_diversification(
+                        is_approved_retry, _ = self._check_diversification(session,
                             selected_candidate, current_portfolio, available_cash, position_size, current_price, db_conn,
                             override_max_sector_pct=max_sector_pct, override_max_stock_pct=max_stock_pct
                         )
@@ -336,7 +328,7 @@ class BuyExecutor:
             
             # 8. DB 기록
             self._record_trade(
-                db_conn=db_conn,
+                session=session,
                 stock_code=stock_code,
                 stock_name=stock_name,
                 order_no=order_no,
@@ -390,24 +382,12 @@ class BuyExecutor:
                 "dry_run": dry_run
             }
             
-        except Exception as e:
-            logger.error(f"❌ 매수 처리 중 오류: {e}", exc_info=True)
-            return {"status": "error", "reason": str(e)}
-        finally:
-            # DB 연결 종료
-            if db_conn and hasattr(db_conn, 'close'):
-                try:
-                    db_conn.close()
-                    logger.info("DB 연결 종료")
-                except Exception as e:
-                    logger.error(f"DB 연결 종료 오류: {e}")
-    
-    def _check_safety_constraints(self, db_conn) -> dict:
+    def _check_safety_constraints(self, session) -> dict:
         """안전장치 체크"""
         try:
             # 1. 오늘 매수 횟수 확인
             max_buy_count = self.config.get_int('MAX_BUY_COUNT_PER_DAY', default=5)
-            today_buy_count = database.get_today_buy_count(db_conn)
+            today_buy_count = repo.get_today_buy_count(session)
             
             if today_buy_count >= max_buy_count:
                 return {
@@ -417,7 +397,7 @@ class BuyExecutor:
             
             # 2. 최대 보유 종목 수 확인
             max_portfolio_size = self.config.get_int('MAX_PORTFOLIO_SIZE', default=10)
-            current_portfolio = database.get_active_portfolio(db_conn)
+            current_portfolio = repo.get_active_portfolio(session)
             
             if len(current_portfolio) >= max_portfolio_size:
                 return {
@@ -435,7 +415,7 @@ class BuyExecutor:
         """LLM 랭킹 결재 (사용 안함 - Fast Hands 대체)"""
         pass
 
-    def _check_diversification(self, candidate: dict, current_portfolio: list, available_cash: float, position_size: int, current_price: float, db_conn, override_max_sector_pct: float = None, override_max_stock_pct: float = None) -> tuple:
+    def _check_diversification(self, session, candidate: dict, current_portfolio: list, available_cash: float, position_size: int, current_price: float, override_max_sector_pct: float = None, override_max_stock_pct: float = None) -> tuple:
         """포트폴리오 분산 검증"""
         try:
             # 섹터 정보 조회 (SectorClassifier 사용)
@@ -490,14 +470,14 @@ class BuyExecutor:
             logger.error(f"분산 검증 오류: {e}", exc_info=True)
             # 에러 시 보수적으로 False 반환
             return False, {'reason': str(e)}
-    
-    def _record_trade(self, db_conn, stock_code: str, stock_name: str, order_no: str,
+
+    def _record_trade(self, session, stock_code: str, stock_name: str, order_no: str,
                      quantity: int, price: float, buy_signal_type: str, factor_score: float,
                      llm_reason: str, dry_run: bool, risk_setting: dict = None):
         """거래 기록"""
         try:
             # 1. PORTFOLIO 테이블에 추가
-            # database.add_to_portfolio 함수가 없으므로 직접 SQL 실행 필요하거나 database.py에 해당 함수가 있는지 확인
+            # database.add_to_portfolio 함수가 없으므로 직접 SQL 실행 필요하거나 database.py에 해당 함수가 있는지 확인 -> execute_trade_and_log 사용
             # shared/database.py 파일에는 add_to_portfolio 함수가 없고 execute_trade_and_log 함수가 있습니다.
             # 따라서 execute_trade_and_log 함수를 사용해야 합니다.
             
@@ -512,7 +492,7 @@ class BuyExecutor:
             }
             
             database.execute_trade_and_log(
-                connection=db_conn,
+                connection=session, # execute_trade_and_log가 session을 받도록 수정되었다고 가정
                 trade_type='BUY',  # DRY_RUN 여부는 key_metrics_dict에 저장 (TRADE_TYPE 컬럼 길이 제한 8자 준수)
                 stock_info=stock_info,
                 quantity=quantity,

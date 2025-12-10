@@ -1,3 +1,4 @@
+
 """
 shared/config.py - Ultra Jennie 설정 관리 모듈
 =============================================
@@ -41,6 +42,8 @@ import os
 import logging
 from typing import Any, Optional, Dict
 from functools import lru_cache
+
+from .db.connection import session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +154,8 @@ class ConfigManager:
             
             # DB 조회 (Pool 또는 Stateless 모드 자동 처리)
             from . import database
-            with database.get_db_connection_context() as db_conn:
-                db_value = database.get_config(db_conn, key, silent=True)
+            with session_scope(readonly=True) as session:
+                db_value = database.get_config(session, key, silent=True)
                 if db_value is not None:
                     # DB 캐시 업데이트
                     self._db_cache[key] = (db_value, current_time)
@@ -204,8 +207,8 @@ class ConfigManager:
         if persist_to_db:
             try:
                 from . import database
-                with database.get_db_connection_context() as db_conn:
-                    database.set_config(db_conn, key, str(value))
+                with session_scope() as session:
+                    database.set_config(session, key, str(value))
                 # DB 캐시도 업데이트
                 self._db_cache[key] = (str(value), current_time)
                 logger.info(f"[Config] DB에도 '{key}' 저장: {value}")

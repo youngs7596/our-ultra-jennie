@@ -47,6 +47,8 @@ try:
     import shared.auth as auth
     import shared.database as database
     from shared.llm import JennieBrain # 감성 분석을 위한 JennieBrain 임포트
+    from shared.db.connection import session_scope
+    from shared.db.models import WatchList as WatchListModel
     from shared.gemini import ensure_gemini_api_key
     # [v9.1] 경쟁사 수혜 분석 모듈
     from shared.news_classifier import NewsClassifier, get_classifier
@@ -225,44 +227,20 @@ def get_watchlist_from_db():
     [v9.0] DB에서 WatchList를 조회합니다 (Fallback용).
     MariaDB 사용 (pymysql 직접 연결).
     """
-    import pymysql
-    db_conn = None
     try:
-        # MariaDB 직접 연결
-        host = os.getenv("MARIADB_HOST", "host.docker.internal")
-        port = int(os.getenv("MARIADB_PORT", "3306"))
-        user = auth.get_secret("mariadb-user") or os.getenv("MARIADB_USER", "root")
-        password = auth.get_secret("mariadb-password") or os.getenv("MARIADB_PASSWORD", "")
-        dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
-        
-        db_conn = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=dbname,
-            charset='utf8mb4'
-        )
-        logger.info(f"✅ (1/6) MariaDB 연결 성공! ({host}:{port}/{dbname})")
- 
-        cursor = db_conn.cursor()
-        sql = "SELECT STOCK_CODE, STOCK_NAME FROM WATCHLIST"
-        cursor.execute(sql)
+        with session_scope(readonly=True) as session:
+            rows = session.query(WatchListModel.stock_code, WatchListModel.stock_name).all()
         
         watchlist = []
-        for row in cursor.fetchall():
+        for row in rows:
             watchlist.append({"code": row[0], "name": row[1]})
  
         logger.info(f"✅ (1/6) 'WatchList' {len(watchlist)}개 로드 성공.")
         return watchlist
         
     except Exception as e:
-        logger.exception(f"🔥 (1/6) DB 'get_watchlist_from_db' 함수 실행 중 오류 발생!")
+        logger.error(f"🔥 (1/6) DB 'get_watchlist_from_db' 함수 실행 중 오류 발생: {e}")
         return []
-    finally:
-        if db_conn:
-            db_conn.close()
-            logger.info("... (1/6) DB 연결이 종료되었습니다.")
 
 def get_numeric_timestamp(feed_entry):
     """
@@ -366,28 +344,10 @@ def process_sentiment_analysis(documents):
     [New] 수집된 뉴스 중 종목 뉴스에 대해 실시간 감성 분석을 수행합니다.
     분석 결과는 Redis 및 MariaDB에 저장됩니다.
     """
-    import pymysql
     if not jennie_brain or not documents:
         return
 
     logger.info(f"  [Sentiment] 신규 문서 {len(documents)}개에 대한 감성 분석 시작...")
-    
-    # MariaDB 연결 (저장용)
-    db_conn = None
-    try:
-        host = os.getenv("MARIADB_HOST", "host.docker.internal")
-        port = int(os.getenv("MARIADB_PORT", "3306"))
-        user = auth.get_secret("mariadb-user") or os.getenv("MARIADB_USER", "root")
-        password = auth.get_secret("mariadb-password") or os.getenv("MARIADB_PASSWORD", "")
-        dbname = os.getenv("MARIADB_DBNAME", "jennie_db")
-        
-        db_conn = pymysql.connect(
-            host=host, port=port, user=user, password=password,
-            database=dbname, charset='utf8mb4'
-        )
-        logger.info(f"✅ [Sentiment] MariaDB 연결 성공!")
-    except Exception as e:
-        logger.error(f"❌ [Sentiment] DB 연결 실패: {e}")
 
     processed_count = 0
     for doc in documents:
@@ -427,21 +387,18 @@ def process_sentiment_analysis(documents):
             logger.warning(f"⚠️ [Sentiment] Redis 저장 실패 (Skip): {e}")
             continue
         
-        # 3. Oracle DB 저장 (기록용)
-        if db_conn:
-            try:
-                database.save_news_sentiment(db_conn, stock_code, news_title, score, reason, news_link, published_at)
-            except Exception as e:
-                logger.warning(f"⚠️ [Sentiment] DB 저장 실패 (Skip): {e}")
-                continue
+        # 3. DB 저장 (기록용) - SQLAlchemy 사용
+        try:
+            with session_scope() as session:
+                database.save_news_sentiment(session, stock_code, news_title, score, reason, news_link, published_at)
+        except Exception as e:
+            logger.warning(f"⚠️ [Sentiment] DB 저장 실패 (Skip): {e}")
+            continue
         
         processed_count += 1
         
         if SENTIMENT_COOLDOWN_SECONDS > 0:
             time.sleep(SENTIMENT_COOLDOWN_SECONDS)
-            
-    if db_conn:
-        db_conn.close()
         
     logger.info(f"✅ [Sentiment] 종목 뉴스 {processed_count}건 감성 분석 및 저장 완료.")
 
