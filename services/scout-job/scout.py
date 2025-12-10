@@ -42,6 +42,7 @@ if PROJECT_ROOT not in sys.path:
 
 import shared.auth as auth
 import shared.database as database
+from shared.db.connection import session_scope
 from shared.kis import KISClient as KIS_API
 from shared.kis.gateway_client import KISGatewayClient
 from shared.llm import JennieBrain
@@ -213,7 +214,7 @@ def prefetch_all_data(candidate_stocks: Dict[str, Dict], kis_api, vectorstore) -
     return snapshot_cache, news_cache
 
 
-def enrich_candidates_with_market_data(candidate_stocks: Dict[str, Dict], db_conn, vectorstore) -> None:
+def enrich_candidates_with_market_data(candidate_stocks: Dict[str, Dict], session, vectorstore) -> None:
     """
     [v4.1] 후보군에 시장 데이터 추가 (해시 계산용)
     
@@ -231,33 +232,33 @@ def enrich_candidates_with_market_data(candidate_stocks: Dict[str, Dict], db_con
     
     # 1. DB에서 최신 가격/거래량 데이터 일괄 조회
     try:
-        cursor = db_conn.cursor()
-        placeholders = ','.join(['%s'] * len(stock_codes))
+        from sqlalchemy import text
+        
+        placeholders = ','.join([f"'{code}'" for code in stock_codes])
         
         # 최신 날짜의 데이터만 조회 (가격, 거래량)
-        # Note: foreign_net_buy는 아직 테이블에 없으므로 제외
-        query = f"""
+        query = text(f"""
             SELECT STOCK_CODE, CLOSE_PRICE, VOLUME, PRICE_DATE
             FROM STOCK_DAILY_PRICES_3Y
             WHERE STOCK_CODE IN ({placeholders})
-            AND PRICE_DATE = (
-                SELECT MAX(PRICE_DATE) FROM STOCK_DAILY_PRICES_3Y AS sub 
-                WHERE sub.STOCK_CODE = STOCK_DAILY_PRICES_3Y.STOCK_CODE
+            AND (STOCK_CODE, PRICE_DATE) IN (
+                SELECT STOCK_CODE, MAX(PRICE_DATE) 
+                FROM STOCK_DAILY_PRICES_3Y
+                WHERE STOCK_CODE IN ({placeholders})
+                GROUP BY STOCK_CODE
             )
-        """
-        cursor.execute(query, stock_codes)
-        rows = cursor.fetchall()
+        """)
+        rows = session.execute(query).fetchall()
         
         for row in rows:
-            code = row['STOCK_CODE'] if isinstance(row, dict) else row[0]
-            price = row['CLOSE_PRICE'] if isinstance(row, dict) else row[1]
-            volume = row['VOLUME'] if isinstance(row, dict) else row[2]
+            code = row[0]
+            price = row[1]
+            volume = row[2]
             
             if code in candidate_stocks:
                 candidate_stocks[code]['price'] = float(price) if price else 0
                 candidate_stocks[code]['volume'] = int(volume) if volume else 0
         
-        cursor.close()
         logger.info(f"   (Hash) ✅ DB에서 {len(rows)}개 종목 시장 데이터 로드")
     except Exception as e:
         logger.warning(f"   (Hash) ⚠️ DB 시장 데이터 조회 실패: {e}")
@@ -396,21 +397,12 @@ def main():
     start_time = time.time()
     logger.info("--- 🤖 'Scout Job' [v3.0 Local] 실행 시작 ---")
     
-    db_conn = None
     kis_api = None
     brain = None
-    chroma_client = None
 
     try:
-        logger.info("--- [Init] 환경 변수 로드 및 MariaDB/KIS API 연결 시작 ---")
-        load_dotenv()
-        
-        logger.info("🔧 DB 연결 중... (SQLAlchemy 사용)")
-        db_conn = database.get_db_connection()
-        if db_conn is None:
-            raise Exception("MariaDB 연결에 실패했습니다.")
-        
-        logger.info("✅ DB 연결 완료")
+        logger.info("--- [Init] 환경 변수 로드 및 KIS API 연결 시작 ---")
+        load_dotenv(override=True)
         
         trading_mode = os.getenv("TRADING_MODE", "REAL")
         use_gateway = os.getenv("USE_KIS_GATEWAY", "true").lower() == "true"
@@ -435,564 +427,551 @@ def main():
             project_id=os.getenv("GCP_PROJECT_ID", "local"),
             gemini_api_key_secret=os.getenv("SECRET_ID_GEMINI_API_KEY")
         )
-        watchlist_snapshot = database.get_active_watchlist(db_conn)
         
-        # ChromaDB 초기화
-        vectorstore = None
-        try:
-            logger.info("   ... ChromaDB 클라이언트 연결 시도 (Gemini Embeddings) ...")
-            api_key = ensure_gemini_api_key()
-            embeddings = GoogleGenerativeAIEmbeddings(
-                model="models/gemini-embedding-001", 
-                google_api_key=api_key
-            )
+        # [v4.3] SQLAlchemy 세션 사용으로 변경
+        with session_scope() as session:
+            watchlist_snapshot = database.get_active_watchlist(session)
             
-            chroma_client = chromadb.HttpClient(
-                host=CHROMA_SERVER_HOST, 
-                port=CHROMA_SERVER_PORT
-            )
-            vectorstore = Chroma(
-                client=chroma_client, 
-                collection_name="rag_stock_data", 
-                embedding_function=embeddings
-            )
-            logger.info("✅ [v3.0] LLM 및 ChromaDB 클라이언트 초기화 완료.")
-        except Exception as e:
-            logger.warning(f"⚠️ ChromaDB 초기화 실패 (RAG 기능 비활성화): {e}")
             vectorstore = None
-
-        # [Phase 0] 자동 파라미터 최적화 (비활성화)
-        # logger.info("--- [Phase 0] 자동 파라미터 최적화 시작 ---")
-        # try:
-        #     if run_auto_parameter_optimization(db_conn, brain):
-        #         logger.info("   ✅ 자동 파라미터 최적화 완료!")
-        #     else:
-        #         logger.info("   ⏭️ 자동 파라미터 최적화 건너뜀")
-        # except Exception as e:
-        #     logger.error(f"   ❌ 자동 파라미터 최적화 중 오류: {e}")
-
-        # Phase 1: 트리플 소스 후보 발굴 (v3.8: 섹터 분석 추가)
-        logger.info("--- [Phase 1] 트리플 소스 후보 발굴 시작 ---")
-        update_pipeline_status(phase=1, phase_name="Hunter Scout", status="running", progress=0)
-        candidate_stocks = {}
-
-        # A: 동적 우량주 (KOSPI 200 기준)
-        universe_size = int(os.getenv("SCOUT_UNIVERSE_SIZE", "200"))
-        for stock in get_dynamic_blue_chips(limit=universe_size):
-            candidate_stocks[stock['code']] = {'name': stock['name'], 'reasons': ['KOSPI 시총 상위']}
-        
-        # E: 섹터 모멘텀 분석 (v3.8 신규)
-        sector_analysis = analyze_sector_momentum(kis_api, db_conn, watchlist_snapshot)
-        hot_sector_stocks = get_hot_sector_stocks(sector_analysis, top_n=30)
-        for stock in hot_sector_stocks:
-            if stock['code'] not in candidate_stocks:
-                candidate_stocks[stock['code']] = {
-                    'name': stock['name'], 
-                    'reasons': [f"핫 섹터 ({stock['sector']}, +{stock['sector_momentum']:.1f}%)"]
-                }
-            else:
-                candidate_stocks[stock['code']]['reasons'].append(
-                    f"핫 섹터 ({stock['sector']}, +{stock['sector_momentum']:.1f}%)"
-                )
-
-        # B: 정적 우량주
-        for stock in BLUE_CHIP_STOCKS:
-            if stock['code'] not in candidate_stocks:
-                candidate_stocks[stock['code']] = {'name': stock['name'], 'reasons': ['정적 우량주']}
-
-        # C: RAG
-        if vectorstore:
             try:
-                logger.info("   (C) RAG 기반 후보 발굴 중...")
-                rag_results = vectorstore.similarity_search(query="실적 호재 계약 수주", k=50)
-                for doc in rag_results:
-                    stock_code = doc.metadata.get('stock_code')
-                    stock_name = doc.metadata.get('stock_name')
-                    if stock_code and stock_name:
-                        if stock_code not in candidate_stocks:
-                            candidate_stocks[stock_code] = {'name': stock_name, 'reasons': []}
-                        candidate_stocks[stock_code]['reasons'].append(f"RAG 포착: {doc.page_content[:20]}...")
+                logger.info("   ... ChromaDB 클라이언트 연결 시도 (Gemini Embeddings) ...")
+                api_key = ensure_gemini_api_key()
+                embeddings = GoogleGenerativeAIEmbeddings(
+                    model="models/gemini-embedding-001", 
+                    google_api_key=api_key
+                )
+                
+                chroma_client = chromadb.HttpClient( # noqa
+                    host=CHROMA_SERVER_HOST, 
+                    port=CHROMA_SERVER_PORT
+                )
+                vectorstore = Chroma(
+                    client=chroma_client, 
+                    collection_name="rag_stock_data", 
+                    embedding_function=embeddings
+                )
+                logger.info("✅ [v3.0] LLM 및 ChromaDB 클라이언트 초기화 완료.")
             except Exception as e:
-                logger.warning(f"   (C) RAG 검색 실패: {e}")
+                logger.warning(f"⚠️ ChromaDB 초기화 실패 (RAG 기능 비활성화): {e}")
+                vectorstore = None
 
-        # D: 모멘텀
-        logger.info("   (D) 모멘텀 팩터 기반 종목 발굴 중...")
-        momentum_stocks = get_momentum_stocks(
-            kis_api,
-            db_conn,
-            period_months=6,
-            top_n=30,
-            watchlist_snapshot=watchlist_snapshot
-        )
-        for stock in momentum_stocks:
-            if stock['code'] not in candidate_stocks:
-                candidate_stocks[stock['code']] = {
-                    'name': stock['name'], 
-                    'reasons': [f'모멘텀 ({stock["momentum"]:.1f}%)']
-                }
-        
-        logger.info(f"   ✅ 후보군 {len(candidate_stocks)}개 발굴 완료.")
+            # Phase 1: 트리플 소스 후보 발굴 (v3.8: 섹터 분석 추가)
+            logger.info("--- [Phase 1] 트리플 소스 후보 발굴 시작 ---")
+            update_pipeline_status(phase=1, phase_name="Hunter Scout", status="running", progress=0)
+            candidate_stocks = {}
 
-        # [v4.1] 해시 계산 전에 시장 데이터 추가 (가격, 거래량)
-        logger.info("--- [Phase 1.5] 시장 데이터 기반 해시 계산 ---")
-        enrich_candidates_with_market_data(candidate_stocks, db_conn, vectorstore)
-        
-        # [v4.2] Phase 1 시작 전에 모든 데이터 일괄 조회 (병렬 스레드 안 API 호출 제거)
-        logger.info("--- [Phase 1.6] 데이터 사전 조회 (스냅샷/뉴스) ---")
-        snapshot_cache, news_cache = prefetch_all_data(candidate_stocks, kis_api, vectorstore)
-
-        # [v4.3] 뉴스 해시를 candidate_stocks에 반영 (해시 계산에 포함)
-        # 뉴스 내용이 바뀌면 해시가 달라져 LLM 재호출됨
-        news_hash_count = 0
-        for code, news in news_cache.items():
-            if code in candidate_stocks and news and news not in [
-                "뉴스 DB 미연결", "최근 관련 뉴스 없음", "뉴스 검색 오류", 
-                "뉴스 조회 실패", "뉴스 캐시 없음"
-            ]:
-                # 뉴스 내용의 MD5 해시 (시간 정보 포함되어 있음)
-                candidate_stocks[code]['news_hash'] = hashlib.md5(news.encode()).hexdigest()[:16]
-                news_hash_count += 1
-        logger.info(f"   (Hash) ✅ 뉴스 해시 {news_hash_count}개 반영 완료")
-
-        # Phase 2: LLM 최종 선정
-        logger.info("--- [Phase 2] LLM 기반 최종 Watchlist 선정 시작 ---")
-        update_pipeline_status(
-            phase=1, phase_name="Hunter Scout", status="running", 
-            total_candidates=len(candidate_stocks)
-        )
-        
-        # =============================================================
-        # [v1.0] 하이브리드 스코어링 모드 분기
-        # =============================================================
-        if is_hybrid_scoring_enabled():
-            logger.info("=" * 60)
-            logger.info("   🚀 Scout v1.0 Hybrid Scoring Mode 활성화!")
-            logger.info("=" * 60)
+            # A: 동적 우량주 (KOSPI 200 기준)
+            universe_size = int(os.getenv("SCOUT_UNIVERSE_SIZE", "200"))
+            for stock in get_dynamic_blue_chips(limit=universe_size):
+                candidate_stocks[stock['code']] = {'name': stock['name'], 'reasons': ['KOSPI 시총 상위']}
             
-            try:
-                from shared.hybrid_scoring import (
-                    QuantScorer, HybridScorer, 
-                    create_hybrid_scoring_tables,
-                    format_quant_score_for_prompt,
-                )
-                from shared.market_regime import MarketRegimeDetector
-                
-                # DB 테이블 생성 확인
-                create_hybrid_scoring_tables(db_conn)
-                
-                # 시장 국면 감지
-                kospi_prices = database.get_daily_prices(db_conn, "0001", limit=60)
-                if not kospi_prices.empty:
-                    detector = MarketRegimeDetector()
-                    current_regime, _ = detector.detect_regime(kospi_prices, float(kospi_prices['CLOSE_PRICE'].iloc[-1]), quiet=True)
-                else:
-                    current_regime = "SIDEWAYS"
-                
-                logger.info(f"   현재 시장 국면: {current_regime}")
-                
-                # QuantScorer 초기화
-                quant_scorer = QuantScorer(db_conn, market_regime=current_regime)
-                
-                # Step 1: 정량 점수 계산 (LLM 호출 없음, 비용 0원)
-                logger.info(f"\n   [v5 Step 1] 정량 점수 계산 ({len(candidate_stocks)}개 종목) - 비용 0원")
-                quant_results = {}
-                
-                for code, info in candidate_stocks.items():
-                    if code == '0001':
-                        continue
-                    stock_info = {
-                        'code': code,
-                        'info': info,
-                        'snapshot': snapshot_cache.get(code),
+            # E: 섹터 모멘텀 분석 (v3.8 신규)
+            sector_analysis = analyze_sector_momentum(kis_api, session, watchlist_snapshot)
+            hot_sector_stocks = get_hot_sector_stocks(sector_analysis, top_n=30)
+            for stock in hot_sector_stocks:
+                if stock['code'] not in candidate_stocks:
+                    candidate_stocks[stock['code']] = {
+                        'name': stock['name'], 
+                        'reasons': [f"핫 섹터 ({stock['sector']}, +{stock['sector_momentum']:.1f}%)"]
                     }
-                    quant_results[code] = process_quant_scoring_task(
-                        stock_info, quant_scorer, db_conn, kospi_prices
+                else:
+                    candidate_stocks[stock['code']]['reasons'].append(
+                        f"핫 섹터 ({stock['sector']}, +{stock['sector_momentum']:.1f}%)"
                     )
+
+            # B: 정적 우량주
+            for stock in BLUE_CHIP_STOCKS:
+                if stock['code'] not in candidate_stocks:
+                    candidate_stocks[stock['code']] = {'name': stock['name'], 'reasons': ['정적 우량주']}
+
+            # C: RAG
+            if vectorstore:
+                try:
+                    logger.info("   (C) RAG 기반 후보 발굴 중...")
+                    rag_results = vectorstore.similarity_search(query="실적 호재 계약 수주", k=50)
+                    for doc in rag_results:
+                        stock_code = doc.metadata.get('stock_code')
+                        stock_name = doc.metadata.get('stock_name')
+                        if stock_code and stock_name:
+                            if stock_code not in candidate_stocks:
+                                candidate_stocks[stock_code] = {'name': stock_name, 'reasons': []}
+                            candidate_stocks[stock_code]['reasons'].append(f"RAG 포착: {doc.page_content[:20]}...")
+                except Exception as e:
+                    logger.warning(f"   (C) RAG 검색 실패: {e}")
+
+            # D: 모멘텀
+            logger.info("   (D) 모멘텀 팩터 기반 종목 발굴 중...")
+            momentum_stocks = get_momentum_stocks(
+                    kis_api,
+                    session,
+                period_months=6,
+                top_n=30,
+                watchlist_snapshot=watchlist_snapshot
+            )
+            for stock in momentum_stocks:
+                if stock['code'] not in candidate_stocks:
+                    candidate_stocks[stock['code']] = {
+                        'name': stock['name'], 
+                        'reasons': [f'모멘텀 ({stock["momentum"]:.1f}%)']
+                    }
+            
+            logger.info(f"   ✅ 후보군 {len(candidate_stocks)}개 발굴 완료.")
+
+            # [v4.1] 해시 계산 전에 시장 데이터 추가 (가격, 거래량)
+            logger.info("--- [Phase 1.5] 시장 데이터 기반 해시 계산 ---")
+            enrich_candidates_with_market_data(candidate_stocks, session, vectorstore)
+            
+            # [v4.2] Phase 1 시작 전에 모든 데이터 일괄 조회 (병렬 스레드 안 API 호출 제거)
+            logger.info("--- [Phase 1.6] 데이터 사전 조회 (스냅샷/뉴스) ---")
+            snapshot_cache, news_cache = prefetch_all_data(candidate_stocks, kis_api, vectorstore)
+
+            # [v4.3] 뉴스 해시를 candidate_stocks에 반영 (해시 계산에 포함)
+            # 뉴스 내용이 바뀌면 해시가 달라져 LLM 재호출됨
+            news_hash_count = 0
+            for code, news in news_cache.items():
+                if code in candidate_stocks and news and news not in [
+                    "뉴스 DB 미연결", "최근 관련 뉴스 없음", "뉴스 검색 오류", 
+                    "뉴스 조회 실패", "뉴스 캐시 없음"
+                ]:
+                    # 뉴스 내용의 MD5 해시 (시간 정보 포함되어 있음)
+                    candidate_stocks[code]['news_hash'] = hashlib.md5(news.encode()).hexdigest()[:16]
+                    news_hash_count += 1
+            logger.info(f"   (Hash) ✅ 뉴스 해시 {news_hash_count}개 반영 완료")
+
+            # Phase 2: LLM 최종 선정
+            logger.info("--- [Phase 2] LLM 기반 최종 Watchlist 선정 시작 ---")
+            update_pipeline_status(
+                phase=1, phase_name="Hunter Scout", status="running", 
+                total_candidates=len(candidate_stocks)
+            )
+            
+            # =============================================================
+            # [v1.0] 하이브리드 스코어링 모드 분기
+            # =============================================================
+            if is_hybrid_scoring_enabled():
+                logger.info("=" * 60)
+                logger.info("   🚀 Scout v5 Hybrid Scoring Mode 활성화!")
+                logger.info("=" * 60)
                 
-                # Step 2: 정량 기반 1차 필터링 (하위 50% 탈락)
-                logger.info(f"\n   [v5 Step 2] 정량 기반 1차 필터링 (하위 50% 탈락)")
-                quant_result_list = list(quant_results.values())
-                filtered_results = quant_scorer.filter_candidates(quant_result_list, cutoff_ratio=0.5)
-                
-                filtered_codes = {r.stock_code for r in filtered_results}
-                logger.info(f"   ✅ 정량 필터 통과: {len(filtered_codes)}개 (평균 점수: {sum(r.total_score for r in filtered_results)/len(filtered_results):.1f}점)")
-                
-                # Step 3: LLM 정성 분석 (통과 종목만)
-                logger.info(f"\n   [v5 Step 3] LLM 정성 분석 (통계 컨텍스트 포함)")
-                
-                final_approved_list: List[Dict] = []
-                if '0001' in candidate_stocks:
-                    final_approved_list.append({'code': '0001', 'name': 'KOSPI', 'is_tradable': False})
-                
-                llm_decision_records: Dict[str, Dict] = {}
-                llm_max_workers = max(1, _parse_int_env(os.getenv("SCOUT_LLM_MAX_WORKERS"), 4))
-                
-                # Phase 1: Hunter (통계 컨텍스트 포함)
-                phase1_results = []
-                with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
-                    future_to_code = {}
-                    for code in filtered_codes:
-                        info = candidate_stocks[code]
-                        quant_result = quant_results[code]
-                        payload = {'code': code, 'info': info}
-                        future = executor.submit(
-                            process_phase1_hunter_v5_task, 
-                            payload, brain, quant_result, snapshot_cache, news_cache
+                try:
+                    from shared.hybrid_scoring import (
+                        QuantScorer, HybridScorer, 
+                        create_hybrid_scoring_tables,
+                        format_quant_score_for_prompt,
+                    )
+                    from shared.market_regime import MarketRegimeDetector
+                    
+                    # DB 테이블 생성 확인
+                    create_hybrid_scoring_tables(session)
+                    
+                    # 시장 국면 감지
+                    kospi_prices = database.get_daily_prices(session, "0001", limit=60)
+                    if not kospi_prices.empty:
+                        detector = MarketRegimeDetector()
+                        current_regime, _ = detector.detect_regime(kospi_prices, float(kospi_prices['CLOSE_PRICE'].iloc[-1]), quiet=True)
+                    else:
+                        current_regime = "SIDEWAYS"
+                    
+                    logger.info(f"   현재 시장 국면: {current_regime}")
+                    
+                    # QuantScorer 초기화
+                    quant_scorer = QuantScorer(session, market_regime=current_regime)
+                    
+                    # Step 1: 정량 점수 계산 (LLM 호출 없음, 비용 0원)
+                    logger.info(f"\n   [v5 Step 1] 정량 점수 계산 ({len(candidate_stocks)}개 종목) - 비용 0원")
+                    quant_results = {}
+                    
+                    for code, info in candidate_stocks.items():
+                        if code == '0001':
+                            continue
+                        stock_info = {
+                            'code': code,
+                            'info': info,
+                            'snapshot': snapshot_cache.get(code),
+                        }
+                        quant_results[code] = process_quant_scoring_task(
+                            stock_info, quant_scorer, session, kospi_prices
                         )
-                        future_to_code[future] = code
                     
-                    for future in as_completed(future_to_code):
-                        result = future.result()
-                        if result:
-                            phase1_results.append(result)
-                            if not result['passed']:
-                                llm_decision_records[result['code']] = {
-                                    'code': result['code'],
-                                    'name': result['name'],
-                                    'llm_score': result['hunter_score'],
-                                    'llm_reason': result['hunter_reason'],
-                                    'is_tradable': False,
-                                    'approved': False,
-                                    'hunter_score': result['hunter_score'],
-                                    'llm_metadata': {'llm_grade': 'D', 'source': 'v5_hunter_reject'}
-                                }
-                
-                phase1_passed = [r for r in phase1_results if r['passed']]
-                logger.info(f"   ✅ v5 Hunter 통과: {len(phase1_passed)}/{len(filtered_codes)}개")
-                
-                # Phase 2-3: Debate + Judge (상위 종목만)
-                PHASE2_MAX = int(os.getenv("SCOUT_PHASE2_MAX_ENTRIES", "50"))
-                if len(phase1_passed) > PHASE2_MAX:
-                    phase1_passed_sorted = sorted(phase1_passed, key=lambda x: x['hunter_score'], reverse=True)
-                    phase1_passed = phase1_passed_sorted[:PHASE2_MAX]
-                
-                if phase1_passed:
-                    logger.info(f"\n   [v5 Step 4] Debate + Judge (하이브리드 점수 결합)")
+                    # Step 2: 정량 기반 1차 필터링 (하위 50% 탈락)
+                    logger.info(f"\n   [v5 Step 2] 정량 기반 1차 필터링 (하위 50% 탈락)")
+                    quant_result_list = list(quant_results.values())
+                    filtered_results = quant_scorer.filter_candidates(quant_result_list, cutoff_ratio=0.5)
                     
+                    filtered_codes = {r.stock_code for r in filtered_results}
+                    logger.info(f"   ✅ 정량 필터 통과: {len(filtered_codes)}개 (평균 점수: {sum(r.total_score for r in filtered_results)/len(filtered_results):.1f}점)")
+                    
+                    # Step 3: LLM 정성 분석 (통과 종목만)
+                    logger.info(f"\n   [v5 Step 3] LLM 정성 분석 (통계 컨텍스트 포함)")
+                    
+                    final_approved_list: List[Dict] = []
+                    if '0001' in candidate_stocks:
+                        final_approved_list.append({'code': '0001', 'name': 'KOSPI', 'is_tradable': False})
+                    
+                    llm_decision_records: Dict[str, Dict] = {}
+                    llm_max_workers = max(1, _parse_int_env(os.getenv("SCOUT_LLM_MAX_WORKERS"), 4))
+                    
+                    # Phase 1: Hunter (통계 컨텍스트 포함)
+                    phase1_results = []
                     with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
                         future_to_code = {}
-                        for p1_result in phase1_passed:
-                            future = executor.submit(process_phase23_judge_v5_task, p1_result, brain)
-                            future_to_code[future] = p1_result['code']
-                        
-                        for future in as_completed(future_to_code):
-                            record = future.result()
-                            if record:
-                                llm_decision_records[record['code']] = record
-                                if record.get('approved'):
-                                    final_approved_list.append(_record_to_watchlist_entry(record))
-                
-                logger.info(f"   ✅ v5 최종 승인: {len([r for r in llm_decision_records.values() if r.get('approved')])}개")
-                
-                # 쿼터제 적용
-                MAX_WATCHLIST_SIZE = 15
-                if len(final_approved_list) > MAX_WATCHLIST_SIZE:
-                    final_approved_list_sorted = sorted(
-                        final_approved_list,
-                        key=lambda x: x.get('llm_score', 0),
-                        reverse=True
-                    )
-                    final_approved_list = final_approved_list_sorted[:MAX_WATCHLIST_SIZE]
-                
-                logger.info(f"\n   🏁 Scout v1.0 완료: {len(final_approved_list)}개 종목 선정")
-                _v5_completed = True
-                
-            except Exception as e:
-                logger.error(f"❌ Scout v1.0 실행 오류, v4 모드로 폴백: {e}", exc_info=True)
-                _v5_completed = False
-        else:
-            _v5_completed = False
-        
-        # =============================================================
-        # [v4.x] 기존 LLM 기반 선정 로직 (v5 미활성화 또는 실패 시)
-        # =============================================================
-        if not _v5_completed:
-            logger.info("   (Mode) v4.x 기존 LLM 기반 로직 실행")
-            
-            # [v4.3] 새로운 캐시 시스템 - LLM_EVAL_CACHE 테이블 기반 직접 비교
-            llm_cache_snapshot = _load_llm_cache_from_db(db_conn)
-            llm_max_workers = max(1, _parse_int_env(os.getenv("SCOUT_LLM_MAX_WORKERS"), 4))
-            
-            # 오늘 날짜 (KST 기준)
-            kst = timezone(timedelta(hours=9))
-            today_str = datetime.now(kst).strftime("%Y-%m-%d")
-
-            final_approved_list: List[Dict] = []
-            if '0001' in candidate_stocks:
-                final_approved_list.append({'code': '0001', 'name': 'KOSPI', 'is_tradable': False})
-                del candidate_stocks['0001']
-
-            llm_decision_records: Dict[str, Dict] = {}
-            cache_hits = 0
-            pending_codes: List[str] = []
-            cache_miss_reasons: Dict[str, str] = {}  # 디버깅용
-
-            for code, info in candidate_stocks.items():
-                cached = llm_cache_snapshot.get(code)
-                
-                # [v4.3] 직접 비교로 캐시 유효성 검증
-                current_data = {
-                    'price_bucket': _get_price_bucket(info.get('price', 0)),
-                    'volume_bucket': _get_volume_bucket(info.get('volume', 0)),
-                    'news_hash': info.get('news_hash'),
-                }
-                
-                if _is_cache_valid_direct(cached, current_data, today_str):
-                    # 캐시 적중 - 이전 LLM 결과 재사용
-                    llm_decision_records[code] = {
-                        'code': code,
-                        'name': info['name'],
-                        'llm_score': cached.get('judge_score') or cached.get('hunter_score', 0),
-                        'llm_reason': cached.get('llm_reason', ''),
-                        'is_tradable': cached.get('is_tradable', False),
-                        'approved': cached.get('is_approved', False),
-                        'llm_metadata': {
-                            'llm_grade': cached.get('llm_grade'),
-                            'source': 'cache',
-                        }
-                    }
-                    cache_hits += 1
-                    if cached.get('is_approved'):
-                        final_approved_list.append(_record_to_watchlist_entry(llm_decision_records[code]))
-                else:
-                    # 캐시 미스 - LLM 재호출 필요
-                    pending_codes.append(code)
-                    # 미스 원인 기록 (디버깅용)
-                    if not cached:
-                        cache_miss_reasons[code] = "no_cache"
-                    elif cached.get('eval_date') != today_str:
-                        cache_miss_reasons[code] = f"date({cached.get('eval_date')}!={today_str})"
-                    elif cached.get('price_bucket') != current_data['price_bucket']:
-                        cache_miss_reasons[code] = f"price({cached.get('price_bucket')}!={current_data['price_bucket']})"
-                    elif (cached.get('news_hash') or '') != (current_data.get('news_hash') or ''):
-                        cache_miss_reasons[code] = "news_changed"
-
-            if cache_hits:
-                logger.info(f"   (LLM) ✅ 캐시 적중 {cache_hits}건 (오늘 날짜 + 동일 가격/뉴스)")
-            
-            if pending_codes:
-                # 캐시 미스 원인 분석
-                reason_counts = {}
-                for reason in cache_miss_reasons.values():
-                    reason_type = reason.split("(")[0]
-                    reason_counts[reason_type] = reason_counts.get(reason_type, 0) + 1
-                logger.info(f"   (LLM) ⚠️ 캐시 미스 {len(pending_codes)}건 - 원인: {reason_counts}")
-
-            need_llm_calls = len(pending_codes) > 0
-
-            llm_invocation_count = 0
-            if need_llm_calls:
-                if brain is None:
-                    logger.error("   (LLM) JennieBrain 초기화 실패로 신규 호출을 수행할 수 없습니다.")
-                else:
-                    # [v3.8] 2-Pass 병렬 처리 최적화
-                    # Pass 1: Phase 1 Hunter (Gemini-Flash) - 병렬로 빠르게 필터링
-                    logger.info(f"   (LLM) [Pass 1] Phase 1 Hunter 병렬 실행 시작 ({len(pending_codes)}개 종목)")
-                    update_pipeline_status(
-                        phase=1, phase_name="Hunter Scout", status="running",
-                        total_candidates=len(candidate_stocks)
-                    )
-                    phase1_start = time.time()
-                    
-                    phase1_results = []
-                    # [v4.1] Claude Rate Limit 대응: 워커 수 제한 (기존 *2 제거)
-                    phase1_worker_count = min(llm_max_workers, max(1, len(pending_codes)))
-                    logger.info(f"   (LLM) Phase 1 워커 수: {phase1_worker_count}개 (Rate Limit 대응)")
-                    
-                    with ThreadPoolExecutor(max_workers=phase1_worker_count) as executor:
-                        future_to_code = {}
-                        for code in pending_codes:
-                            payload = {
-                                'code': code,
-                                'info': candidate_stocks[code],
-                            }
-                            # [v4.2] 캐시에서 데이터 조회하도록 변경 (API 호출 X)
-                            future = executor.submit(process_phase1_hunter_task, payload, brain, snapshot_cache, news_cache)
+                        for code in filtered_codes:
+                            info = candidate_stocks[code]
+                            quant_result = quant_results[code]
+                            payload = {'code': code, 'info': info}
+                            future = executor.submit(
+                                process_phase1_hunter_v5_task, 
+                                payload, brain, quant_result, snapshot_cache, news_cache
+                            )
                             future_to_code[future] = code
                         
                         for future in as_completed(future_to_code):
                             result = future.result()
                             if result:
                                 phase1_results.append(result)
-                                # Phase 1 탈락 종목도 기록 (캐시용)
                                 if not result['passed']:
                                     llm_decision_records[result['code']] = {
                                         'code': result['code'],
                                         'name': result['name'],
-                                        'is_tradable': False,
                                         'llm_score': result['hunter_score'],
-                                        'llm_reason': result['hunter_reason'] or 'Phase 1 필터링 탈락',
+                                        'llm_reason': result['hunter_reason'],
+                                        'is_tradable': False,
                                         'approved': False,
-                                        'hunter_score': result['hunter_score'],  # [v4.3] 캐시 저장용
-                                        'llm_metadata': {
-                                            'llm_grade': 'D',
-                                            'llm_updated_at': _utcnow().isoformat(),
-                                            'source': 'llm_hunter_reject',
-                                        }
+                                        'hunter_score': result['hunter_score'],
+                                        'llm_metadata': {'llm_grade': 'D', 'source': 'v5_hunter_reject'}
                                     }
                     
-                    phase1_passed_all = [r for r in phase1_results if r['passed']]
-                    phase1_time = time.time() - phase1_start
-                    logger.info(f"   (LLM) [Pass 1] Phase 1 완료: {len(phase1_passed_all)}/{len(pending_codes)}개 통과 ({phase1_time:.1f}초)")
+                    phase1_passed = [r for r in phase1_results if r['passed']]
+                    logger.info(f"   ✅ v5 Hunter 통과: {len(phase1_passed)}/{len(filtered_codes)}개")
                     
-                    # [v4.1] Phase 2 진입 제한: 상위 50개만 (속도 최적화)
-                    PHASE2_MAX_ENTRIES = int(os.getenv("SCOUT_PHASE2_MAX_ENTRIES", "50"))
-                    if len(phase1_passed_all) > PHASE2_MAX_ENTRIES:
-                        phase1_passed_sorted = sorted(phase1_passed_all, key=lambda x: x['hunter_score'], reverse=True)
-                        phase1_passed = phase1_passed_sorted[:PHASE2_MAX_ENTRIES]
-                        logger.info(f"   (LLM) [속도 최적화] Phase 2 진입 제한: 상위 {PHASE2_MAX_ENTRIES}개만 선택 (전체 {len(phase1_passed_all)}개 중)")
-                    else:
-                        phase1_passed = phase1_passed_all
+                    # Phase 2-3: Debate + Judge (상위 종목만)
+                    PHASE2_MAX = int(os.getenv("SCOUT_PHASE2_MAX_ENTRIES", "50"))
+                    if len(phase1_passed) > PHASE2_MAX:
+                        phase1_passed_sorted = sorted(phase1_passed, key=lambda x: x['hunter_score'], reverse=True)
+                        phase1_passed = phase1_passed_sorted[:PHASE2_MAX]
                     
-                    # [v1.0] Redis 상태 업데이트 - Phase 1 완료
-                    update_pipeline_status(
-                        phase=2, phase_name="Bull vs Bear Debate", status="running",
-                        total_candidates=len(candidate_stocks),
-                        passed_phase1=len(phase1_passed_all)  # 전체 통과 수 표시
-                    )
-                    
-                    # Pass 2: Phase 2-3 Debate+Judge (GPT-5-mini) - 상위 종목만
                     if phase1_passed:
-                        logger.info(f"   (LLM) [Pass 2] Phase 2-3 Debate-Judge 실행 ({len(phase1_passed)}개 종목)")
-                        phase23_start = time.time()
+                        logger.info(f"\n   [v5 Step 4] Debate + Judge (하이브리드 점수 결합)")
                         
-                        phase23_worker_count = min(llm_max_workers, max(1, len(phase1_passed)))
-                        
-                        with ThreadPoolExecutor(max_workers=phase23_worker_count) as executor:
+                        with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
                             future_to_code = {}
-                            for phase1_result in phase1_passed:
-                                future = executor.submit(process_phase23_debate_judge_task, phase1_result, brain)
-                                future_to_code[future] = phase1_result['code']
+                            for p1_result in phase1_passed:
+                                future = executor.submit(process_phase23_judge_v5_task, p1_result, brain)
+                                future_to_code[future] = p1_result['code']
                             
                             for future in as_completed(future_to_code):
                                 record = future.result()
-                                if not record:
-                                    continue
-                                llm_invocation_count += 1
-                                llm_decision_records[record['code']] = record
-                                if record.get('approved'):
-                                    final_approved_list.append(_record_to_watchlist_entry(record))
-                        
-                        phase23_time = time.time() - phase23_start
-                        logger.info(f"   (LLM) [Pass 2] Phase 2-3 완료 ({phase23_time:.1f}초)")
-                        
-                        # [v1.0] Redis 상태 업데이트 - Phase 2-3 완료
-                        update_pipeline_status(
-                            phase=3, phase_name="Final Judge", status="running",
-                            total_candidates=len(candidate_stocks),
-                            passed_phase1=len(phase1_passed),
-                            passed_phase2=len(phase1_passed),  # Debate은 전원 참여
-                            final_selected=len(final_approved_list)
+                                if record:
+                                    llm_decision_records[record['code']] = record
+                                    if record.get('approved'):
+                                        final_approved_list.append(_record_to_watchlist_entry(record))
+                    
+                    logger.info(f"   ✅ v5 최종 승인: {len([r for r in llm_decision_records.values() if r.get('approved')])}개")
+                    
+                    # 쿼터제 적용
+                    MAX_WATCHLIST_SIZE = 15
+                    if len(final_approved_list) > MAX_WATCHLIST_SIZE:
+                        final_approved_list_sorted = sorted(
+                            final_approved_list,
+                            key=lambda x: x.get('llm_score', 0),
+                            reverse=True
                         )
-                    else:
-                        logger.info("   (LLM) [Pass 2] Phase 1 통과 종목 없음, Phase 2-3 건너뜀")
+                        final_approved_list = final_approved_list_sorted[:MAX_WATCHLIST_SIZE]
+                    
+                    logger.info(f"\n   🏁 Scout v1.0 완료: {len(final_approved_list)}개 종목 선정")
+                    _v5_completed = True
+                    
+                except Exception as e:
+                    logger.error(f"❌ Scout v1.0 실행 오류, v4 모드로 폴백: {e}", exc_info=True)
+                    _v5_completed = False
             else:
-                logger.info("   (LLM) 모든 후보가 캐시로 충족되어 신규 호출이 없습니다.")
-
-            logger.info("   (LLM) 신규 호출 수: %d", llm_invocation_count)
-
-            # [v4.3] 새로운 캐시 테이블에 결과 저장
-            if llm_invocation_count > 0:
-                new_cache_entries = {}
-                for code, record in llm_decision_records.items():
-                    info = candidate_stocks.get(code, {})
-                    new_cache_entries[code] = {
-                        'stock_name': record.get('name', ''),
+                _v5_completed = False
+            
+            # =============================================================
+            # [v4.x] 기존 LLM 기반 선정 로직 (v5 미활성화 또는 실패 시)
+            # =============================================================
+            if not _v5_completed:
+                logger.info("   (Mode) v4.x 기존 LLM 기반 로직 실행")
+                
+                # [v4.3] 새로운 캐시 시스템 - LLM_EVAL_CACHE 테이블 기반 직접 비교 (db_conn 사용)
+                llm_cache_snapshot = _load_llm_cache_from_db(session)
+                llm_max_workers = max(1, _parse_int_env(os.getenv("SCOUT_LLM_MAX_WORKERS"), 4))
+    
+                # 오늘 날짜 (KST 기준)
+                kst = timezone(timedelta(hours=9))
+                today_str = datetime.now(kst).strftime("%Y-%m-%d")
+    
+                final_approved_list: List[Dict] = []
+                if '0001' in candidate_stocks:
+                    final_approved_list.append({'code': '0001', 'name': 'KOSPI', 'is_tradable': False})
+                    del candidate_stocks['0001']
+    
+                llm_decision_records: Dict[str, Dict] = {}
+                cache_hits = 0
+                pending_codes: List[str] = []
+                cache_miss_reasons: Dict[str, str] = {}  # 디버깅용
+    
+                for code, info in candidate_stocks.items():
+                    cached = llm_cache_snapshot.get(code)
+                    
+                    # [v4.3] 직접 비교로 캐시 유효성 검증
+                    current_data = {
                         'price_bucket': _get_price_bucket(info.get('price', 0)),
                         'volume_bucket': _get_volume_bucket(info.get('volume', 0)),
                         'news_hash': info.get('news_hash'),
-                        'eval_date': today_str,
-                        'hunter_score': record.get('hunter_score', record.get('llm_score', 0)),
-                        'judge_score': record.get('llm_score', 0),
-                        'llm_grade': record.get('llm_metadata', {}).get('llm_grade'),
-                        'llm_reason': record.get('llm_reason', ''),
-                        'news_used': news_cache.get(code, ''),
-                        'is_approved': record.get('approved', False),
-                        'is_tradable': record.get('is_tradable', False),
                     }
-                _save_llm_cache_batch(db_conn, new_cache_entries)
-                _save_last_llm_run_at(db_conn, _utcnow())
-
-            # [v1.0] Phase 3: 쿼터제 적용 (Top 15개만 저장) - 제니 피드백 반영
-            MAX_WATCHLIST_SIZE = 15
+                    
+                    if _is_cache_valid_direct(cached, current_data, today_str):
+                        # 캐시 적중 - 이전 LLM 결과 재사용
+                        llm_decision_records[code] = {
+                            'code': code,
+                            'name': info['name'],
+                            'llm_score': cached.get('judge_score') or cached.get('hunter_score', 0),
+                            'llm_reason': cached.get('llm_reason', ''),
+                            'is_tradable': cached.get('is_tradable', False),
+                            'approved': cached.get('is_approved', False),
+                            'llm_metadata': {
+                                'llm_grade': cached.get('llm_grade'),
+                                'source': 'cache',
+                            }
+                        }
+                        cache_hits += 1
+                        if cached.get('is_approved'):
+                            final_approved_list.append(_record_to_watchlist_entry(llm_decision_records[code]))
+                    else:
+                        # 캐시 미스 - LLM 재호출 필요
+                        pending_codes.append(code)
+                        # 미스 원인 기록 (디버깅용)
+                        if not cached:
+                            cache_miss_reasons[code] = "no_cache"
+                        elif cached.get('eval_date') != today_str:
+                            cache_miss_reasons[code] = f"date({cached.get('eval_date')}!={today_str})"
+                        elif cached.get('price_bucket') != current_data['price_bucket']:
+                            cache_miss_reasons[code] = f"price({cached.get('price_bucket')}!={current_data['price_bucket']})"
+                        elif (cached.get('news_hash') or '') != (current_data.get('news_hash') or ''):
+                            cache_miss_reasons[code] = "news_changed"
+    
+                if cache_hits:
+                    logger.info(f"   (LLM) ✅ 캐시 적중 {cache_hits}건 (오늘 날짜 + 동일 가격/뉴스)")
+                
+                if pending_codes:
+                    # 캐시 미스 원인 분석
+                    reason_counts = {}
+                    for reason in cache_miss_reasons.values():
+                        reason_type = reason.split("(")[0]
+                        reason_counts[reason_type] = reason_counts.get(reason_type, 0) + 1
+                    logger.info(f"   (LLM) ⚠️ 캐시 미스 {len(pending_codes)}건 - 원인: {reason_counts}")
+    
+                need_llm_calls = len(pending_codes) > 0
+    
+                llm_invocation_count = 0
+                if need_llm_calls:
+                    if brain is None:
+                        logger.error("   (LLM) JennieBrain 초기화 실패로 신규 호출을 수행할 수 없습니다.")
+                    else:
+                        # [v3.8] 2-Pass 병렬 처리 최적화
+                        # Pass 1: Phase 1 Hunter (Gemini-Flash) - 병렬로 빠르게 필터링
+                        logger.info(f"   (LLM) [Pass 1] Phase 1 Hunter 병렬 실행 시작 ({len(pending_codes)}개 종목)")
+                        update_pipeline_status(
+                            phase=1, phase_name="Hunter Scout", status="running",
+                            total_candidates=len(candidate_stocks)
+                        )
+                        phase1_start = time.time()
+                        
+                        phase1_results = []
+                        # [v4.1] Claude Rate Limit 대응: 워커 수 제한 (기존 *2 제거)
+                        phase1_worker_count = min(llm_max_workers, max(1, len(pending_codes)))
+                        logger.info(f"   (LLM) Phase 1 워커 수: {phase1_worker_count}개 (Rate Limit 대응)")
+                        
+                        with ThreadPoolExecutor(max_workers=phase1_worker_count) as executor:
+                            future_to_code = {}
+                            for code in pending_codes:
+                                payload = {
+                                    'code': code,
+                                    'info': candidate_stocks[code],
+                                }
+                                # [v4.2] 캐시에서 데이터 조회하도록 변경 (API 호출 X)
+                                future = executor.submit(process_phase1_hunter_task, payload, brain, snapshot_cache, news_cache)
+                                future_to_code[future] = code
+                            
+                            for future in as_completed(future_to_code):
+                                result = future.result()
+                                if result:
+                                    phase1_results.append(result)
+                                    # Phase 1 탈락 종목도 기록 (캐시용)
+                                    if not result['passed']:
+                                        llm_decision_records[result['code']] = {
+                                            'code': result['code'],
+                                            'name': result['name'],
+                                            'is_tradable': False,
+                                            'llm_score': result['hunter_score'],
+                                            'llm_reason': result['hunter_reason'] or 'Phase 1 필터링 탈락',
+                                            'approved': False,
+                                            'hunter_score': result['hunter_score'],  # [v4.3] 캐시 저장용
+                                            'llm_metadata': {
+                                                'llm_grade': 'D',
+                                                'llm_updated_at': _utcnow().isoformat(),
+                                                'source': 'llm_hunter_reject',
+                                            }
+                                        }
+                        
+                        phase1_passed_all = [r for r in phase1_results if r['passed']]
+                        phase1_time = time.time() - phase1_start
+                        logger.info(f"   (LLM) [Pass 1] Phase 1 완료: {len(phase1_passed_all)}/{len(pending_codes)}개 통과 ({phase1_time:.1f}초)")
+                        
+                        # [v4.1] Phase 2 진입 제한: 상위 50개만 (속도 최적화)
+                        PHASE2_MAX_ENTRIES = int(os.getenv("SCOUT_PHASE2_MAX_ENTRIES", "50"))
+                        if len(phase1_passed_all) > PHASE2_MAX_ENTRIES:
+                            phase1_passed_sorted = sorted(phase1_passed_all, key=lambda x: x['hunter_score'], reverse=True)
+                            phase1_passed = phase1_passed_sorted[:PHASE2_MAX_ENTRIES]
+                            logger.info(f"   (LLM) [속도 최적화] Phase 2 진입 제한: 상위 {PHASE2_MAX_ENTRIES}개만 선택 (전체 {len(phase1_passed_all)}개 중)")
+                        else:
+                            phase1_passed = phase1_passed_all
+                        
+                        # [v1.0] Redis 상태 업데이트 - Phase 1 완료
+                        update_pipeline_status(
+                            phase=2, phase_name="Bull vs Bear Debate", status="running",
+                            total_candidates=len(candidate_stocks),
+                            passed_phase1=len(phase1_passed_all)  # 전체 통과 수 표시
+                        )
+                        
+                        # Pass 2: Phase 2-3 Debate+Judge (GPT-5-mini) - 상위 종목만
+                        if phase1_passed:
+                            logger.info(f"   (LLM) [Pass 2] Phase 2-3 Debate-Judge 실행 ({len(phase1_passed)}개 종목)")
+                            phase23_start = time.time()
+                            
+                            phase23_worker_count = min(llm_max_workers, max(1, len(phase1_passed)))
+                            
+                            with ThreadPoolExecutor(max_workers=phase23_worker_count) as executor:
+                                future_to_code = {}
+                                for phase1_result in phase1_passed:
+                                    future = executor.submit(process_phase23_debate_judge_task, phase1_result, brain)
+                                    future_to_code[future] = phase1_result['code']
+                                
+                                for future in as_completed(future_to_code):
+                                    record = future.result()
+                                    if not record:
+                                        continue
+                                    llm_invocation_count += 1
+                                    llm_decision_records[record['code']] = record
+                                    if record.get('approved'):
+                                        final_approved_list.append(_record_to_watchlist_entry(record))
+                            
+                            phase23_time = time.time() - phase23_start
+                            logger.info(f"   (LLM) [Pass 2] Phase 2-3 완료 ({phase23_time:.1f}초)")
+                            
+                            # [v1.0] Redis 상태 업데이트 - Phase 2-3 완료
+                            update_pipeline_status(
+                                phase=3, phase_name="Final Judge", status="running",
+                                total_candidates=len(candidate_stocks),
+                                passed_phase1=len(phase1_passed),
+                                passed_phase2=len(phase1_passed),  # Debate은 전원 참여
+                                final_selected=len(final_approved_list)
+                            )
+                        else:
+                            logger.info("   (LLM) [Pass 2] Phase 1 통과 종목 없음, Phase 2-3 건너뜀")
+                else:
+                    logger.info("   (LLM) 모든 후보가 캐시로 충족되어 신규 호출이 없습니다.")
+    
+                logger.info("   (LLM) 신규 호출 수: %d", llm_invocation_count)
+    
+                # [v4.3] 새로운 캐시 테이블에 결과 저장
+                if llm_invocation_count > 0:
+                    new_cache_entries = {}
+                    for code, record in llm_decision_records.items():
+                        info = candidate_stocks.get(code, {})
+                        new_cache_entries[code] = {
+                            'stock_name': record.get('name', ''),
+                            'price_bucket': _get_price_bucket(info.get('price', 0)),
+                            'volume_bucket': _get_volume_bucket(info.get('volume', 0)),
+                            'news_hash': info.get('news_hash'),
+                            'eval_date': today_str,
+                            'hunter_score': record.get('hunter_score', record.get('llm_score', 0)),
+                            'judge_score': record.get('llm_score', 0),
+                            'llm_grade': record.get('llm_metadata', {}).get('llm_grade'),
+                            'llm_reason': record.get('llm_reason', '')[:60000] if record.get('llm_reason') else None,
+                            'news_used': news_cache.get(code, '')[:60000] if news_cache.get(code) else None,
+                            'is_approved': record.get('approved', False),
+                            'is_tradable': record.get('is_tradable', False),
+                        }
+                    _save_llm_cache_batch(session, new_cache_entries)
+                    _save_last_llm_run_at(session, _utcnow())
+    
+                # [v1.0] Phase 3: 쿼터제 적용 (Top 15개만 저장) - 제니 피드백 반영
+                MAX_WATCHLIST_SIZE = 15
+                
+                # 점수 기준 내림차순 정렬 후 상위 N개만 선택
+                if len(final_approved_list) > MAX_WATCHLIST_SIZE:
+                    final_approved_list_sorted = sorted(
+                        final_approved_list, 
+                        key=lambda x: x.get('llm_score', 0), 
+                        reverse=True
+                    )
+                    final_approved_list = final_approved_list_sorted[:MAX_WATCHLIST_SIZE]
+                    logger.info(f"   (쿼터제) 상위 {MAX_WATCHLIST_SIZE}개만 선정 (총 {len(final_approved_list_sorted)}개 중)")
             
-            # 점수 기준 내림차순 정렬 후 상위 N개만 선택
-            if len(final_approved_list) > MAX_WATCHLIST_SIZE:
-                final_approved_list_sorted = sorted(
-                    final_approved_list, 
-                    key=lambda x: x.get('llm_score', 0), 
-                    reverse=True
-                )
-                final_approved_list = final_approved_list_sorted[:MAX_WATCHLIST_SIZE]
-                logger.info(f"   (쿼터제) 상위 {MAX_WATCHLIST_SIZE}개만 선정 (총 {len(final_approved_list_sorted)}개 중)")
-        
-        # =============================================================
-        # [공통] Phase 3: 최종 Watchlist 저장
-        # =============================================================
-        logger.info(f"--- [Phase 3] 최종 Watchlist {len(final_approved_list)}개 저장 ---")
-        database.save_to_watchlist(db_conn, final_approved_list)
-        
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            if hasattr(kis_api, 'API_CALL_DELAY'):
-                future_to_data = {
-                    executor.submit(fetch_kis_data_task, s, kis_api): (time.sleep(kis_api.API_CALL_DELAY), s)[1]
-                    for s in final_approved_list 
-                }
-            else:
-                future_to_data = {
-                    executor.submit(fetch_kis_data_task, s, kis_api): s
-                    for s in final_approved_list 
-                }
+            # =============================================================
+            # [공통] Phase 3: 최종 Watchlist 저장
+            # =============================================================
+            logger.info(f"--- [Phase 3] 최종 Watchlist {len(final_approved_list)}개 저장 ---")
+            database.save_to_watchlist(session, final_approved_list)
             
-            all_daily = []
-            all_fund = []
-            for future in as_completed(future_to_data):
-                d, f = future.result()
-                if d: all_daily.extend(d)
-                if f: all_fund.append(f)
-        
-        if all_daily: database.save_all_daily_prices(db_conn, all_daily)
-        if all_fund: database.update_all_stock_fundamentals(db_conn, all_fund)
-        
-        # Phase 3-A: 재무 데이터 (네이버 크롤링)
-        tradable_codes = [s['code'] for s in final_approved_list if s.get('is_tradable', True)]
-        if tradable_codes:
-            batch_update_watchlist_financial_data(db_conn, tradable_codes)
-        
-        # [v1.0] Redis 최종 상태 업데이트 - 완료
-        update_pipeline_status(
-            phase=3, phase_name="Final Judge", status="completed",
-            progress=100,
-            total_candidates=len(candidate_stocks) if 'candidate_stocks' in dir() else 0,
-            passed_phase1=len(phase1_passed) if 'phase1_passed' in dir() else 0,
-            passed_phase2=len(phase1_passed) if 'phase1_passed' in dir() else 0,
-            final_selected=len(final_approved_list)
-        )
-        
-        # [v1.0] Redis 결과 저장 (Dashboard에서 조회용)
-        pipeline_results = [
-            {
-                "stock_code": s.get('code'),
-                "stock_name": s.get('name'),
-                "grade": s.get('llm_metadata', {}).get('llm_grade', 'C'),
-                "final_score": s.get('llm_score', 0),
-                "selected": s.get('approved', False),
-                "judge_reason": s.get('llm_reason', ''),
-            }
-            for s in final_approved_list
-        ]
-        save_pipeline_results(pipeline_results)
-        logger.info(f"   (Redis) Dashboard용 결과 저장 완료 ({len(pipeline_results)}개)")
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                if hasattr(kis_api, 'API_CALL_DELAY'):
+                    future_to_data = {
+                        executor.submit(fetch_kis_data_task, s, kis_api): (time.sleep(kis_api.API_CALL_DELAY), s)[1]
+                        for s in final_approved_list 
+                    }
+                else:
+                    future_to_data = {
+                        executor.submit(fetch_kis_data_task, s, kis_api): s
+                        for s in final_approved_list 
+                    }
+                
+                all_daily = []
+                all_fund = []
+                for future in as_completed(future_to_data):
+                    d, f = future.result()
+                    if d: all_daily.extend(d)
+                    if f: all_fund.append(f)
+            
+            if all_daily: database.save_all_daily_prices(session, all_daily)
+            if all_fund: database.update_all_stock_fundamentals(session, all_fund)
+            
+            # Phase 3-A: 재무 데이터 (네이버 크롤링)
+            tradable_codes = [s['code'] for s in final_approved_list if s.get('is_tradable', True)]
+            if tradable_codes:
+                batch_update_watchlist_financial_data(session, tradable_codes)
+            
+            # [v1.0] Redis 최종 상태 업데이트 - 완료
+            update_pipeline_status(
+                phase=3, phase_name="Final Judge", status="completed",
+                progress=100,
+                total_candidates=len(candidate_stocks) if 'candidate_stocks' in locals() else 0,
+                passed_phase1=len(phase1_passed) if 'phase1_passed' in locals() else 0,
+                passed_phase2=len(phase1_passed) if 'phase1_passed' in locals() else 0,
+                final_selected=len(final_approved_list)
+            )
+            
+            # [v1.0] Redis 결과 저장 (Dashboard에서 조회용)
+            pipeline_results = [
+                {
+                    "stock_code": s.get('code'),
+                    "stock_name": s.get('name'),
+                    "grade": s.get('llm_metadata', {}).get('llm_grade', 'C'),
+                    "final_score": s.get('llm_score', 0),
+                    "selected": s.get('approved', False),
+                    "judge_reason": s.get('llm_reason', ''),
+                }
+                for s in final_approved_list
+            ]
+            save_pipeline_results(pipeline_results)
+            logger.info(f"   (Redis) Dashboard용 결과 저장 완료 ({len(pipeline_results)}개)")
 
     except Exception as e:
         logger.critical(f"❌ 'Scout Job' 실행 중 오류: {e}", exc_info=True)
         # [v1.0] 오류 시 Redis 상태 업데이트
         update_pipeline_status(phase=0, phase_name="Error", status="error")
-    
-    finally:
-        if db_conn:
-            db_conn.close()
-            logger.info("--- [DB] 연결 종료 ---")
             
     logger.info(f"--- 🤖 'Scout Job' 종료 (소요: {time.time() - start_time:.2f}초) ---")
 

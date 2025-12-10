@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import shared.database as database
 import shared.redis_cache as redis_cache
+from shared.db.connection import session_scope
+from shared.db.repository import get_active_watchlist as get_active_watchlist_v2
 from shared.notification import TelegramBot
 from shared.rabbitmq import RabbitMQPublisher
 from limits import (
@@ -260,8 +262,8 @@ class CommandHandler:
     def _handle_portfolio(self, cmd: dict, dry_run: bool) -> str:
         """현재 포트폴리오 조회"""
         try:
-            with database.get_db_connection_context() as db_conn:
-                portfolio = database.get_active_portfolio(db_conn)
+            with session_scope(readonly=True) as session:
+                portfolio = get_active_watchlist_v2(session)
             
             if not portfolio:
                 return "📭 현재 보유 종목이 없습니다."
@@ -271,14 +273,14 @@ class CommandHandler:
             total_value = 0
             total_profit = 0
             
-            for i, p in enumerate(portfolio, 1):
-                code = p.get('stock_code') or p.get('code')
-                name = p.get('stock_name') or p.get('name', code)
-                qty = p.get('quantity', 0)
-                buy_price = p.get('buy_price', 0)
-                current_price = p.get('current_price', buy_price)
+            # SQLAlchemy ORM 객체 또는 dict를 반환할 수 있으므로 getattr 사용
+            for i, (code, p) in enumerate(portfolio.items(), 1):
+                name = p.get('name', code)
+                qty = p.get('quantity', 0) # 포트폴리오 조회이므로 보유수량
+                buy_price = p.get('avg_price', 0) # 평단가
+                current_price = p.get('current_price', buy_price) # 현재가
                 
-                profit_pct = ((current_price - buy_price) / buy_price * 100) if buy_price > 0 else 0
+                profit_pct = ((current_price - buy_price) / buy_price * 100) if buy_price > 0 and current_price > 0 else 0
                 profit_emoji = "📈" if profit_pct >= 0 else "📉"
                 
                 value = qty * current_price
@@ -454,8 +456,8 @@ class CommandHandler:
                 'llm_reason': '[Telegram /watch 명령으로 수동 추가]'
             }
             
-            with database.get_db_connection_context() as db_conn:
-                database.save_to_watchlist(db_conn, [candidate])
+            with session_scope() as session:
+                database.save_to_watchlist(session, [candidate])
             
             return f"✅ 관심종목에 추가되었습니다.\n\n📌 {stock_name} ({stock_code})"
             
@@ -485,12 +487,11 @@ class CommandHandler:
                 return f"❓ 종목을 찾을 수 없습니다: {stock_input}"
             
             # 2. 관심종목에서 제거
-            with database.get_db_connection_context() as db_conn:
-                cursor = db_conn.cursor()
-                cursor.execute("DELETE FROM WatchList WHERE STOCK_CODE = %s", [stock_code])
-                deleted = cursor.rowcount
-                db_conn.commit()
-                cursor.close()
+            from shared.db.models import WatchList
+            with session_scope() as session:
+                result = session.query(WatchList).filter(WatchList.stock_code == stock_code).delete()
+                deleted = result
+            
             
             if deleted > 0:
                 return f"✅ 관심종목에서 제거되었습니다.\n\n🗑️ {stock_name} ({stock_code})"
@@ -504,8 +505,8 @@ class CommandHandler:
     def _handle_watchlist(self, cmd: dict, dry_run: bool) -> str:
         """관심종목 조회"""
         try:
-            with database.get_db_connection_context() as db_conn:
-                watchlist = database.get_active_watchlist(db_conn)
+            with session_scope(readonly=True) as session:
+                watchlist = get_active_watchlist_v2(session)
             
             if not watchlist:
                 return "📭 관심종목이 없습니다.\n\n`/watch 종목명`으로 추가하세요."
@@ -795,20 +796,20 @@ class CommandHandler:
         """
         try:
             # 6자리 숫자면 코드로 간주
+            from shared.db.models import StockMaster
             if name_or_code.isdigit() and len(name_or_code) == 6:
-                with database.get_db_connection_context() as db_conn:
-                    stock = database.get_stock_by_code(db_conn, name_or_code)
+                with session_scope(readonly=True) as session:
+                    stock = session.query(StockMaster).filter(StockMaster.stock_code == name_or_code).first()
                 if stock:
-                    return (name_or_code, stock.get('stock_name', name_or_code))
+                    return (name_or_code, stock.stock_name)
                 return (name_or_code, name_or_code)
             else:
                 # 종목명으로 검색
-                with database.get_db_connection_context() as db_conn:
-                    stock = database.search_stock_by_name(db_conn, name_or_code)
+                with session_scope(readonly=True) as session:
+                    stock = session.query(StockMaster).filter(StockMaster.stock_name == name_or_code).first()
                 if stock:
-                    return (stock.get('stock_code'), stock.get('stock_name'))
+                    return (stock.stock_code, stock.stock_name)
                 return (None, None)
         except Exception as e:
             logger.error(f"종목 검색 오류: {e}")
             return (None, None)
-

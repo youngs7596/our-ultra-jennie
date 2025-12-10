@@ -14,6 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 import shared.database as database
 import shared.strategy as strategy
 import shared.redis_cache as redis_cache
+from shared.db.connection import session_scope
+from shared.db import repository as repo
 from shared.notification import TelegramBot
 
 logger = logging.getLogger(__name__)
@@ -85,8 +87,8 @@ class PriceMonitor:
         last_alert_check = 0
         while not self.stop_event.is_set():
             try:
-                with database.get_db_connection_context() as db_conn:
-                    portfolio = database.get_active_portfolio(db_conn)
+                with session_scope(readonly=True) as session:
+                    portfolio = repo.get_active_portfolio(session)
                 
                 if not portfolio:
                     logger.info("   (WS) 보유 종목이 없습니다. 60초 후 다시 확인합니다.")
@@ -139,8 +141,8 @@ class PriceMonitor:
         last_alert_check = 0
         while not self.stop_event.is_set():
             try:
-                with database.get_db_connection_context() as db_conn:
-                    portfolio = database.get_active_portfolio(db_conn)
+                with session_scope(readonly=True) as session:
+                    portfolio = repo.get_active_portfolio(session)
                 
                 if not portfolio:
                     time.sleep(check_interval)
@@ -153,16 +155,16 @@ class PriceMonitor:
                     trading_mode = os.getenv("TRADING_MODE", "MOCK")
                     
                     if trading_mode == "MOCK":
-                        with database.get_db_connection_context() as db_conn:
-                            prices = database.get_daily_prices(db_conn, stock_code, limit=1)
+                        with session_scope(readonly=True) as session:
+                            prices = database.get_daily_prices(session, stock_code, limit=1)
                             current_price = float(prices['CLOSE_PRICE'].iloc[-1]) if not prices.empty else 0
                     else:
                         snap = self.kis.get_stock_snapshot(stock_code)
                         current_price = snap['price'] if snap else 0
                     
                     if current_price <= 0: continue
-
-                    with database.get_db_connection_context() as db_conn:
+                    
+                    with session_scope(readonly=True) as db_conn: # _check_sell_signal이 session을 받도록 수정
                         signal = self._check_sell_signal(
                             db_conn, stock_code, holding.get('name', stock_code),
                             holding['avg_price'], current_price, holding
@@ -183,10 +185,10 @@ class PriceMonitor:
                 logger.error(f"모니터링 루프 오류: {e}")
                 time.sleep(check_interval)
     
-    def _check_sell_signal(self, db_conn, stock_code, stock_name, buy_price, current_price, holding):
+    def _check_sell_signal(self, session, stock_code, stock_name, buy_price, current_price, holding):
         try:
             profit_pct = ((current_price - buy_price) / buy_price) * 100
-            daily_prices = database.get_daily_prices(db_conn, stock_code, limit=30)
+            daily_prices = database.get_daily_prices(session, stock_code, limit=30)
             
             # 1. ATR Trailing Stop
             if not daily_prices.empty and len(daily_prices) >= 15:
@@ -247,9 +249,9 @@ class PriceMonitor:
             if not holdings: return
             
             for h in holdings:
-                with database.get_db_connection_context() as db_conn:
-                    signal = self._check_sell_signal(
-                        db_conn, stock_code, h.get('name', stock_code),
+                with session_scope(readonly=True) as session:
+                    signal = self._check_sell_signal(session,
+                        stock_code, h.get('name', stock_code),
                         h['avg_price'], current_price, h
                     )
                 if signal:
@@ -297,8 +299,8 @@ class PriceMonitor:
                 
                 current_price = 0
                 if trading_mode == "MOCK":
-                    with database.get_db_connection_context() as db_conn:
-                        prices = database.get_daily_prices(db_conn, code, limit=1)
+                    with session_scope(readonly=True) as session:
+                        prices = database.get_daily_prices(session, code, limit=1)
                         current_price = float(prices['CLOSE_PRICE'].iloc[-1]) if not prices.empty else 0
                 else:
                     snap = self.kis.get_stock_snapshot(code)

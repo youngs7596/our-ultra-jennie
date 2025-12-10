@@ -259,66 +259,45 @@ def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, tabl
 # [News] 뉴스 감성 저장
 # ============================================================================
 
-def save_news_sentiment(connection, stock_code, title, score, reason, url, published_at):
+def save_news_sentiment(session, stock_code, title, score, reason, url, published_at):
     """
     뉴스 감성 분석 결과를 영구 저장합니다.
-    MariaDB/Oracle 하이브리드 지원.
+    SQLAlchemy ORM을 사용합니다.
     """
-    cursor = None
     try:
-        cursor = connection.cursor()
-        
+        from shared.db.models import NewsSentiment
         table_name = _get_table_name("NEWS_SENTIMENT")
         
-        # 테이블 존재 여부 확인 (없으면 자동 생성)
-        try:
-            cursor.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
-        except Exception:
-            logger.warning(f"⚠️ 테이블 {table_name}이 없어 생성을 시도합니다.")
-            create_sql = f"""
-            CREATE TABLE {table_name} (
-                ID INT AUTO_INCREMENT PRIMARY KEY,
-                STOCK_CODE VARCHAR(20) NOT NULL,
-                NEWS_TITLE VARCHAR(1000),
-                SENTIMENT_SCORE INT DEFAULT 50,
-                SENTIMENT_REASON VARCHAR(2000),
-                SOURCE_URL VARCHAR(2000),
-                PUBLISHED_AT DATETIME,
-                CREATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY UK_NEWS_URL (SOURCE_URL(500))
-            )
-            """
-            cursor.execute(create_sql)
-            connection.commit()
-            logger.info(f"✅ 테이블 {table_name} 생성 완료")
-
         # 중복 URL 체크 (이미 저장된 뉴스면 Skip)
-        check_sql = f"SELECT 1 FROM {table_name} WHERE SOURCE_URL = %s"
-        cursor.execute(check_sql, [url])
-        if cursor.fetchone():
+        existing = session.query(NewsSentiment).filter(NewsSentiment.source_url == url).first()
+        if existing:
             logger.debug(f"ℹ️ [DB] 이미 존재하는 뉴스입니다. (Skip): {title[:20]}...")
             return
 
         # published_at이 int timestamp인 경우 변환
+        published_at_dt = None
         if isinstance(published_at, int):
-            published_at_str = datetime.fromtimestamp(published_at).strftime('%Y-%m-%d %H:%M:%S')
-        else:
-            published_at_str = str(published_at)[:19]
+            published_at_dt = datetime.fromtimestamp(published_at)
+        elif isinstance(published_at, str):
+            try:
+                published_at_dt = datetime.fromisoformat(published_at)
+            except ValueError:
+                published_at_dt = datetime.strptime(published_at[:19], '%Y-%m-%d %H:%M:%S')
+        elif isinstance(published_at, datetime):
+            published_at_dt = published_at
 
-        insert_sql = f"""
-        INSERT INTO {table_name} 
-        (STOCK_CODE, NEWS_TITLE, SENTIMENT_SCORE, SENTIMENT_REASON, SOURCE_URL, PUBLISHED_AT)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(insert_sql, [stock_code, title, score, reason, url, published_at_str])
-        
-        connection.commit()
+        new_sentiment = NewsSentiment(
+            stock_code=stock_code,
+            news_title=title,
+            sentiment_score=score,
+            sentiment_reason=reason,
+            source_url=url,
+            published_at=published_at_dt
+        )
+        session.add(new_sentiment)
+        # session_scope 컨텍스트 매니저가 commit/rollback을 처리합니다.
         logger.info(f"✅ [DB] 뉴스 감성 저장 완료: {stock_code} ({score}점)")
         
     except Exception as e:
         logger.error(f"❌ [DB] 뉴스 감성 저장 실패: {e}")
-        if connection:
-            connection.rollback()
-    finally:
-        if cursor:
-            cursor.close()
+        raise # session_scope에서 rollback을 처리하도록 예외를 다시 발생시킵니다.

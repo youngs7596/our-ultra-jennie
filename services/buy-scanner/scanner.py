@@ -17,6 +17,14 @@ import shared.database as database
 import shared.auth as auth
 import shared.strategy as strategy
 from shared.market_regime import MarketRegimeDetector, StrategySelector
+
+# [v3.7] SQLAlchemy ORM 기반으로 리팩토링
+from shared.db.connection import session_scope
+from shared.db.repository import (
+    get_active_watchlist,
+    get_active_portfolio,
+    get_recently_traded_stocks_batch,
+)
 from shared.factor_scoring import FactorScorer
 from shared.strategy_presets import (
     apply_preset_to_config,
@@ -75,12 +83,12 @@ class BuyScanner:
         logger.info("Step 1: DB 연결 (Stateless 모드 자동 지원)...")
         
         try:
-            # DB 연결 (Pool 또는 Stateless 자동 처리)
-            with database.get_db_connection_context() as db_conn:
+            # SQLAlchemy 세션 사용
+            with session_scope(readonly=True) as session:
                 logger.info("Step 2: DB 연결 성공! 시장 분석 시작...")
                 
                 # 1. 시장 분석
-                market_analysis = self._analyze_market_regime(db_conn)
+                market_analysis = self._analyze_market_regime(session)
             
             if not market_analysis:
                 logger.error("시장 분석 실패")
@@ -95,9 +103,9 @@ class BuyScanner:
             min_bear_confidence = self.config.get_int('MIN_LLM_CONFIDENCE_BEAR', default=80)
             bear_context = None
 
-            with database.get_db_connection_context() as db_conn:
+            with session_scope(readonly=True) as session:
                 # 2. Watchlist 조회
-                watchlist = database.get_active_watchlist(db_conn)
+                watchlist = get_active_watchlist(session)
                 if not watchlist:
                     logger.info("Watchlist가 비어있습니다.")
                     return {
@@ -159,7 +167,7 @@ class BuyScanner:
                     logger.info(f"📉 제한적 매수 허용: {len(watchlist)}개 후보 (LLM B등급 이상)")
                 
                 # 3. Portfolio 조회 (중복 방지)
-                current_portfolio = database.get_active_portfolio(db_conn)
+                current_portfolio = get_active_portfolio(session)
                 owned_codes = {item['code'] for item in current_portfolio}
                 
                 # [Tiered Execution] 현금 비중 확인
@@ -183,7 +191,7 @@ class BuyScanner:
                 
                 # 4. 종목 스캔 (병렬 처리)
                 buy_candidates = self._scan_stocks_parallel(
-                    watchlist, owned_codes, current_regime, active_strategies, db_conn, tier2_enabled, bear_context
+                    watchlist, owned_codes, current_regime, active_strategies, session, tier2_enabled, bear_context
                 )
                 
                 # 5. 팩터 점수 기준 정렬 및 상위 5개 선정
@@ -219,7 +227,7 @@ class BuyScanner:
             logger.error(f"❌ 스캔 중 오류: {e}", exc_info=True)
             return None
     
-    def _analyze_market_regime(self, db_conn) -> dict:
+    def _analyze_market_regime(self, session) -> dict:
         """시장 상황 분석"""
         try:
             current_ts = time.time()
@@ -241,7 +249,7 @@ class BuyScanner:
             # KOSPI 데이터 조회
             kospi_code = "0001"
             ma_period = self.config.get_int('MARKET_INDEX_MA_PERIOD', default=20)
-            kospi_prices_df = database.get_daily_prices(db_conn, kospi_code, limit=ma_period, table_name="STOCK_DAILY_PRICES_3Y")
+            kospi_prices_df = database.get_daily_prices(session, kospi_code, limit=ma_period, table_name="STOCK_DAILY_PRICES_3Y")
             
             if kospi_prices_df.empty or len(kospi_prices_df) < ma_period:
                 raise Exception("KOSPI 과거 데이터 부족")
@@ -315,7 +323,7 @@ class BuyScanner:
             }
     
     def _scan_stocks_parallel(self, watchlist, owned_codes, current_regime, 
-                             active_strategies, db_conn, tier2_enabled=False,
+                             active_strategies, session, tier2_enabled=False,
                              bear_context=None) -> list:
         """종목 병렬 스캔"""
         buy_candidates = []
@@ -332,14 +340,14 @@ class BuyScanner:
                 tradable_codes.append(stock_code)
         
         # 2. 최근 거래 종목 제외
-        recently_traded_codes = database.get_recently_traded_stocks_batch(db_conn, tradable_codes, hours=4)
+        recently_traded_codes = get_recently_traded_stocks_batch(session, tradable_codes, hours=4)
         stock_codes_to_scan = [code for code in tradable_codes if code not in recently_traded_codes]
         
         logger.info(f"스캔 대상: {len(stock_codes_to_scan)}개 (최근 거래 제외: {len(recently_traded_codes)}개)")
         
         if not stock_codes_to_scan:
             return []
-        
+
         # 3. 일봉 데이터 배치 조회
         daily_prices_dict = database.get_daily_prices_batch(db_conn, stock_codes_to_scan, limit=120, table_name="STOCK_DAILY_PRICES_3Y")
         
