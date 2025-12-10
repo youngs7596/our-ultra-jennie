@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-# shared 패키지 임포트
+# shared 패키지 임포트 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import shared.database as database
@@ -306,8 +306,8 @@ class CommandHandler:
     def _handle_pnl(self, cmd: dict, dry_run: bool) -> str:
         """오늘 손익 현황"""
         try:
-            with database.get_db_connection_context() as db_conn:
-                today_trades = database.get_today_trades(db_conn)
+            with session_scope(readonly=True) as session: # type: ignore
+                today_trades = database.get_today_trades(session)
             
             if not today_trades:
                 return "📊 오늘 체결된 거래가 없습니다."
@@ -441,8 +441,8 @@ class CommandHandler:
                 return f"❓ 종목을 찾을 수 없습니다: {stock_input}"
             
             # 2. 이미 관심종목인지 확인
-            with database.get_db_connection_context() as db_conn:
-                watchlist = database.get_active_watchlist(db_conn)
+            with session_scope(readonly=True) as session: # type: ignore
+                watchlist = get_active_watchlist_v2(session)
             
             if stock_code in watchlist:
                 return f"ℹ️ {stock_name}은(는) 이미 관심종목입니다."
@@ -456,7 +456,7 @@ class CommandHandler:
                 'llm_reason': '[Telegram /watch 명령으로 수동 추가]'
             }
             
-            with session_scope() as session:
+            with session_scope() as session: # type: ignore
                 database.save_to_watchlist(session, [candidate])
             
             return f"✅ 관심종목에 추가되었습니다.\n\n📌 {stock_name} ({stock_code})"
@@ -488,7 +488,7 @@ class CommandHandler:
             
             # 2. 관심종목에서 제거
             from shared.db.models import WatchList
-            with session_scope() as session:
+            with session_scope() as session: # type: ignore
                 result = session.query(WatchList).filter(WatchList.stock_code == stock_code).delete()
                 deleted = result
             
@@ -505,7 +505,7 @@ class CommandHandler:
     def _handle_watchlist(self, cmd: dict, dry_run: bool) -> str:
         """관심종목 조회"""
         try:
-            with session_scope(readonly=True) as session:
+            with session_scope(readonly=True) as session: # type: ignore
                 watchlist = get_active_watchlist_v2(session)
             
             if not watchlist:

@@ -164,9 +164,9 @@ class PriceMonitor:
                     
                     if current_price <= 0: continue
                     
-                    with session_scope(readonly=True) as db_conn: # _check_sell_signal이 session을 받도록 수정
+                    with session_scope(readonly=True) as session: # _check_sell_signal이 session을 받도록 수정
                         signal = self._check_sell_signal(
-                            db_conn, stock_code, holding.get('name', stock_code),
+                            session, stock_code, holding.get('name', stock_code),
                             holding['avg_price'], current_price, holding
                         )
                     

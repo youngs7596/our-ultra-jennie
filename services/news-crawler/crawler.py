@@ -248,7 +248,11 @@ def get_numeric_timestamp(feed_entry):
     """
     if hasattr(feed_entry, 'published_parsed') and feed_entry.published_parsed:
         try:
-            return int(calendar.timegm(feed_entry.published_parsed))
+            # feedparser가 반환하는 time.struct_time은 timezone 정보가 없을 수 있음
+            # calendar.timegm은 이를 UTC로 간주하여 timestamp를 생성
+            # 이것이 UTC 기준 시간을 보장하는 가장 안전한 방법
+            utc_timestamp = calendar.timegm(feed_entry.published_parsed)
+            return int(utc_timestamp)
         except Exception:
             return int(datetime.now(timezone.utc).timestamp())
     else:
@@ -271,6 +275,12 @@ def crawl_news_for_stock(stock_code, stock_name):
             return []
 
         for entry in feed.entries:
+            # [v9.2] 7일이 지난 뉴스는 수집 단계에서 제외
+            published_timestamp = get_numeric_timestamp(entry)
+            if datetime.fromtimestamp(published_timestamp, tz=timezone.utc) < datetime.now(timezone.utc) - timedelta(days=7):
+                logger.debug(f"  (2/6) 오래된 뉴스 제외: {entry.title[:30]}...")
+                continue
+
             doc = Document(
                 page_content=f"뉴스 제목: {entry.title}\n링크: {entry.link}",
                 metadata={
@@ -278,7 +288,7 @@ def crawl_news_for_stock(stock_code, stock_name):
                     "stock_name": stock_name,
                     "source": f"Google News RSS ({entry.get('source', {}).get('title', 'N/A')})",
                     "source_url": entry.link, 
-                    "created_at_utc": get_numeric_timestamp(entry)
+                    "created_at_utc": published_timestamp
                 }
             )
             documents.append(doc)
@@ -304,12 +314,18 @@ def crawl_general_news():
                 continue
 
             for entry in feed.entries:
+                # [v9.2] 7일이 지난 뉴스는 수집 단계에서 제외
+                published_timestamp = get_numeric_timestamp(entry)
+                if datetime.fromtimestamp(published_timestamp, tz=timezone.utc) < datetime.now(timezone.utc) - timedelta(days=7):
+                    logger.debug(f"  (3/6) 오래된 뉴스 제외: {entry.title[:30]}...")
+                    continue
+
                 doc = Document(
                     page_content=f"뉴스 제목: {entry.title}\n링크: {entry.link}",
                     metadata={
                         "source": source,
                         "source_url": entry.link, 
-                        "created_at_utc": get_numeric_timestamp(entry)
+                        "created_at_utc": published_timestamp
                     }
                 )
                 documents.append(doc)

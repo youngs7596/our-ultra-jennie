@@ -348,13 +348,11 @@ class BuyScanner:
         if not stock_codes_to_scan:
             return []
 
-        with session_scope(readonly=True) as session:
-            # 3. 일봉 데이터 배치 조회
-            # TODO: get_daily_prices_batch를 SQLAlchemy 리포지토리로 마이그레이션 필요
-            daily_prices_dict = database.get_daily_prices_batch(session, stock_codes_to_scan, limit=120, table_name="STOCK_DAILY_PRICES_3Y")
-            
-            # 4. KOSPI 데이터 (상대 강도 계산용)
-            kospi_prices_df = database.get_daily_prices(session, "0001", limit=120, table_name="STOCK_DAILY_PRICES_3Y")
+        # 3. 일봉 데이터 배치 조회
+        # 4. KOSPI 데이터 (상대 강도 계산용)
+        with session_scope(readonly=True) as db_session:
+            daily_prices_dict = database.get_daily_prices_batch(db_session, stock_codes_to_scan, limit=120, table_name="STOCK_DAILY_PRICES_3Y")
+            kospi_prices_df = database.get_daily_prices(db_session, "0001", limit=120, table_name="STOCK_DAILY_PRICES_3Y")
         
         # 5. 병렬 스캔
         max_workers = min(10, len(stock_codes_to_scan))
