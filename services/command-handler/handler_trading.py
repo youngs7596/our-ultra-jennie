@@ -8,6 +8,8 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+from shared.db.connection import session_scope
+from shared.db import repository as repo
 import shared.database as database
 import shared.redis_cache as redis_cache
 from shared.rabbitmq import RabbitMQPublisher
@@ -203,13 +205,13 @@ def handle_manual_sell(
             return "❌ 매도 퍼블리셔가 초기화되지 않았습니다."
         
         # 1. 종목 코드 변환
-        stock_code, stock_name = resolve_stock_fn(stock_input)
-        if not stock_code:
+        stock_code, stock_name = resolve_stock_fn(stock_input) # type: ignore
+        if not stock_code: # type: ignore
             return f"❓ 종목을 찾을 수 없습니다: {stock_input}"
         
         # 2. 보유 수량 조회
-        with database.get_db_connection_context() as db_conn:
-            portfolio = database.get_active_portfolio(db_conn)
+        with session_scope(readonly=True) as session: # type: ignore
+            portfolio = repo.get_active_portfolio(session)
         
         holding = None
         for p in portfolio:
@@ -221,8 +223,8 @@ def handle_manual_sell(
         if not holding:
             return f"❌ 보유하지 않은 종목입니다: {stock_name}"
         
-        holding_qty = holding.get('quantity', 0)
-        buy_price = holding.get('buy_price', 0)
+        holding_qty = int(holding.get('quantity', 0))
+        buy_price = float(holding.get('avg_price', 0))
         
         if sell_all or quantity is None:
             quantity = holding_qty
@@ -231,7 +233,7 @@ def handle_manual_sell(
             return f"❌ 보유 수량 초과\n\n보유: {holding_qty}주\n요청: {quantity}주"
         
         # 3. 현재가 조회
-        snapshot = kis.get_stock_snapshot(stock_code)
+        snapshot = kis.get_stock_snapshot(stock_code) # type: ignore
         if not snapshot:
             return f"❌ 현재가 조회 실패: {stock_name}"
         
@@ -244,7 +246,7 @@ def handle_manual_sell(
         profit_pct = ((current_price - buy_price) / buy_price * 100) if buy_price > 0 else 0
         profit_emoji = "📈" if profit >= 0 else "📉"
         
-        effective_dry_run = dry_run or redis_cache.is_dryrun_enabled()
+        effective_dry_run = dry_run or redis_cache.is_dryrun_enabled() # type: ignore
         
         payload = {
             "source": "telegram-manual",
@@ -257,7 +259,7 @@ def handle_manual_sell(
             "dry_run": effective_dry_run
         }
         
-        msg_id = sell_publisher.publish(payload)
+        msg_id = sell_publisher.publish(payload) # type: ignore
         if not msg_id:
             return "❌ 매도 요청 발행 실패 (RabbitMQ)"
         
@@ -296,9 +298,9 @@ def handle_sellall(
     # 확인 키워드 필요
     if not args or args[0] != '확인':
         # 현재 포트폴리오 미리보기
-        try:
-            with database.get_db_connection_context() as db_conn:
-                portfolio = database.get_active_portfolio(db_conn)
+        try: # type: ignore
+            with session_scope(readonly=True) as session: # type: ignore
+                portfolio = repo.get_active_portfolio(session)
             
             if not portfolio:
                 return "📭 청산할 보유 종목이 없습니다."
@@ -322,14 +324,14 @@ def handle_sellall(
             return f"❌ 포트폴리오 조회 실패: {e}"
     
     # 실제 청산 실행
-    effective_dry_run = dry_run or redis_cache.is_dryrun_enabled()
+    effective_dry_run = dry_run or redis_cache.is_dryrun_enabled() # type: ignore
     
     try:
         if not sell_publisher:
             return "❌ 매도 퍼블리셔가 초기화되지 않았습니다."
         
-        with database.get_db_connection_context() as db_conn:
-            portfolio = database.get_active_portfolio(db_conn)
+        with session_scope(readonly=True) as session: # type: ignore
+            portfolio = repo.get_active_portfolio(session)
         
         if not portfolio:
             return "📭 청산할 보유 종목이 없습니다."
@@ -339,9 +341,9 @@ def handle_sellall(
         fail_count = 0
         
         for p in portfolio:
-            stock_code = p.get('stock_code') or p.get('code')
-            stock_name = p.get('stock_name') or p.get('name', stock_code)
-            quantity = p.get('quantity', 0)
+            stock_code = p.get('code')
+            stock_name = p.get('name', stock_code)
+            quantity = int(p.get('quantity', 0))
             
             if quantity <= 0:
                 continue
@@ -357,7 +359,7 @@ def handle_sellall(
                 "dry_run": effective_dry_run
             }
             
-            msg_id = sell_publisher.publish(payload)
+            msg_id = sell_publisher.publish(payload) # type: ignore
             if msg_id:
                 results.append(f"✅ {stock_name}: {quantity}주 (msg: {msg_id})")
                 success_count += 1

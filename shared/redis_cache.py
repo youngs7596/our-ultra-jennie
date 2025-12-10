@@ -239,9 +239,9 @@ def set_sentiment_score(
 
     # EMA 계산 (기존 데이터가 없으면 신규 점수 100% 반영)
     if old_data_json:
-        final_score = (old_score * 0.7) + (score * 0.3)
+        final_score = (old_score * 0.5) + (score * 0.5)
         # 이유도 합침 (최신 이유 + 기존 이유 요약)
-        final_reason = f"[New: {score}점] {reason} | [Old: {old_score:.1f}점]"
+        final_reason = f"[New: {score}점] {reason} | [Old: {old_score:.1f}점]" # type: ignore
     else:
         final_score = score
         final_reason = reason
@@ -256,7 +256,7 @@ def set_sentiment_score(
     
     try:
         # 해시(Hash) 대신 JSON 문자열로 저장 (간편함)
-        r.setex(key, 7200, json.dumps(data))  # 2시간(7200초) 유효
+        r.setex(key, 604800, json.dumps(data))  # 7일(604800초) 유효
         logger.debug(f"✅ [Redis] 감성 점수 업데이트: {stock_code} -> {final_score:.1f}점 (Input: {score})")
         return True
     except Exception as e:

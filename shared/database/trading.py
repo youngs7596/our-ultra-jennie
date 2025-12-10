@@ -666,20 +666,21 @@ def record_trade(connection, stock_code: str, trade_type: str, quantity: int,
     cursor.close()
 
 
-def get_today_trades(connection) -> List[Dict]:
+def get_today_trades(session) -> List[Dict]:
     """오늘의 거래 내역 조회"""
-    cursor = connection.cursor()
-    table_name = _get_table_name("TradeLog")
+    from .models import TradeLog
+    from sqlalchemy import func
     
-    today = datetime.now().strftime('%Y%m%d')
-    cursor.execute(f"""
-        SELECT STOCK_CODE, TRADE_TYPE, QUANTITY, PRICE, PROFIT_AMOUNT, TRADE_TIME_UTC
-        FROM {table_name}
-        WHERE DATE(TRADE_TIME_UTC) = %s
-        ORDER BY TRADE_TIME_UTC DESC
-    """, [today])
-    rows = cursor.fetchall()
-    cursor.close()
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    rows = session.query(
+        TradeLog.stock_code,
+        TradeLog.trade_type,
+        TradeLog.quantity,
+        TradeLog.price,
+        func.json_extract(TradeLog.key_metrics_json, '$.profit_amount').label('profit_amount'),
+        TradeLog.trade_timestamp
+    ).filter(TradeLog.trade_timestamp >= today_start).order_by(TradeLog.trade_timestamp.desc()).all()
     
     trades = []
     for row in rows:
@@ -691,8 +692,8 @@ def get_today_trades(connection) -> List[Dict]:
                 "trade_type": row[1],
                 "quantity": row[2],
                 "price": row[3],
-                "profit_amount": row[4],
-                "trade_time": row[5],
+                "profit_amount": float(row[4]) if row[4] else 0.0,
+                "trade_time": row[5]
             })
     return trades
 
