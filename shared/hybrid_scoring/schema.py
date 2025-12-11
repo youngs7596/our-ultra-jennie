@@ -411,12 +411,47 @@ def create_hybrid_scoring_tables(connection) -> bool:
     하이브리드 스코어링에 필요한 테이블들을 생성합니다.
     
     Args:
-        connection: DB 연결 객체 (MariaDB 또는 Oracle)
+        connection: DB 연결 객체 (SQLAlchemy Session, MariaDB 또는 Oracle raw connection)
     
     Returns:
         성공 여부
     """
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
+    
     try:
+        # SQLAlchemy Session인 경우
+        if isinstance(connection, Session):
+            if _is_mariadb():
+                logger.info("🔧 MariaDB용 하이브리드 스코어링 테이블 생성 중... (SQLAlchemy)")
+                statements = [s.strip() for s in MARIADB_SCHEMA.split(';') if s.strip()]
+                for stmt in statements:
+                    if stmt and not stmt.startswith('--'):
+                        try:
+                            connection.execute(text(stmt))
+                        except Exception as e:
+                            if 'Duplicate key name' in str(e) or 'already exists' in str(e):
+                                logger.debug(f"   (스키마) 인덱스 이미 존재: {e}")
+                            else:
+                                logger.warning(f"   (스키마) 문장 실행 경고: {e}")
+            else:
+                logger.info("🔧 Oracle용 하이브리드 스코어링 테이블 생성 중... (SQLAlchemy)")
+                statements = [s.strip() for s in ORACLE_SCHEMA.split(';') if s.strip()]
+                for stmt in statements:
+                    if stmt and not stmt.startswith('--'):
+                        try:
+                            connection.execute(text(stmt))
+                        except Exception as e:
+                            if 'already exists' in str(e).lower() or 'ORA-00955' in str(e):
+                                logger.debug(f"   (스키마) 테이블 이미 존재")
+                            else:
+                                logger.warning(f"   (스키마) 문장 실행 경고: {e}")
+            
+            connection.commit()
+            logger.info("✅ 하이브리드 스코어링 테이블 생성 완료")
+            return True
+        
+        # Raw connection인 경우
         cursor = connection.cursor()
         
         if _is_mariadb():
