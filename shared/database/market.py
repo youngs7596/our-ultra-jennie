@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 def get_stock_by_code(connection, stock_code: str) -> Optional[Dict]:
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
+    
+    # SQLAlchemy Session인 경우
+    if isinstance(connection, Session):
+        result = connection.execute(text("""
+            SELECT STOCK_CODE, STOCK_NAME, SECTOR
+            FROM STOCK_MASTER
+            WHERE STOCK_CODE = :stock_code
+            LIMIT 1
+        """), {"stock_code": stock_code})
+        row = result.fetchone()
+        
+        if not row:
+            return None
+        return {
+            "stock_code": row[0],
+            "stock_name": row[1],
+            "sector": row[2],
+        }
+    
+    # Raw connection인 경우
     cursor = connection.cursor()
     cursor.execute("""
         SELECT STOCK_CODE, STOCK_NAME, SECTOR
@@ -45,6 +67,28 @@ def get_stock_by_code(connection, stock_code: str) -> Optional[Dict]:
 
 
 def search_stock_by_name(connection, name: str) -> Optional[Dict]:
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
+    
+    # SQLAlchemy Session인 경우
+    if isinstance(connection, Session):
+        result = connection.execute(text("""
+            SELECT STOCK_CODE, STOCK_NAME, SECTOR
+            FROM STOCK_MASTER
+            WHERE STOCK_NAME = :name
+            LIMIT 1
+        """), {"name": name})
+        row = result.fetchone()
+        
+        if not row:
+            return None
+        return {
+            "stock_code": row[0],
+            "stock_name": row[1],
+            "sector": row[2],
+        }
+    
+    # Raw connection인 경우
     cursor = connection.cursor()
     cursor.execute("""
         SELECT STOCK_CODE, STOCK_NAME, SECTOR
@@ -71,112 +115,96 @@ def search_stock_by_name(connection, name: str) -> Optional[Dict]:
 # [Price] 주가/펀더멘털 조회 및 저장
 # ============================================================================
 
-def save_all_daily_prices(connection, all_daily_prices_params: List[dict]):
-    """일봉 데이터 Bulk 저장 (MariaDB/Oracle 호환)"""
-    cursor = None
+def save_all_daily_prices(session, all_daily_prices_params: List[dict]):
+    """
+    [v5.0] 일봉 데이터 Bulk 저장 (SQLAlchemy)
+    """
+    from sqlalchemy import text
+    
+    if not all_daily_prices_params:
+        return
+    
     try:
-        cursor = connection.cursor()
+        for p in all_daily_prices_params:
+            session.execute(text("""
+                INSERT INTO STOCK_DAILY_PRICES (STOCK_CODE, PRICE_DATE, CLOSE_PRICE, HIGH_PRICE, LOW_PRICE)
+                VALUES (:code, :date, :price, :high, :low)
+                ON DUPLICATE KEY UPDATE
+                    CLOSE_PRICE = VALUES(CLOSE_PRICE),
+                    HIGH_PRICE = VALUES(HIGH_PRICE),
+                    LOW_PRICE = VALUES(LOW_PRICE)
+            """), {
+                'code': p.get('p_code', p.get('stock_code')),
+                'date': p.get('p_date', p.get('price_date')),
+                'price': p.get('p_price', p.get('close_price')),
+                'high': p.get('p_high', p.get('high_price')),
+                'low': p.get('p_low', p.get('low_price'))
+            })
         
-        if _is_mariadb():
-            # MariaDB: INSERT ... ON DUPLICATE KEY UPDATE
-            sql = """
-            INSERT INTO STOCK_DAILY_PRICES (STOCK_CODE, PRICE_DATE, CLOSE_PRICE, HIGH_PRICE, LOW_PRICE)
-            VALUES (%s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                CLOSE_PRICE = VALUES(CLOSE_PRICE),
-                HIGH_PRICE = VALUES(HIGH_PRICE),
-                LOW_PRICE = VALUES(LOW_PRICE)
-            """
-            insert_data = []
-            for p in all_daily_prices_params:
-                insert_data.append((
-                    p.get('p_code', p.get('stock_code')),
-                    p.get('p_date', p.get('price_date')),
-                    p.get('p_price', p.get('close_price')),
-                    p.get('p_high', p.get('high_price')),
-                    p.get('p_low', p.get('low_price'))
-                ))
-            cursor.executemany(sql, insert_data)
-        else:
-            # Oracle: MERGE
-            sql_merge = """
-            MERGE /*+ NO_PARALLEL */ INTO STOCK_DAILY_PRICES t
-            USING (SELECT TO_DATE(:p_date, 'YYYY-MM-DD') AS price_date, :p_code AS stock_code, 
-                          :p_price AS close_price, :p_high AS high_price, :p_low AS low_price FROM DUAL) s
-            ON (t.STOCK_CODE = s.stock_code AND t.PRICE_DATE = s.price_date)
-            WHEN MATCHED THEN
-                UPDATE SET t.CLOSE_PRICE = s.close_price, t.HIGH_PRICE = s.high_price, t.LOW_PRICE = s.low_price
-            WHEN NOT MATCHED THEN
-                INSERT (STOCK_CODE, PRICE_DATE, CLOSE_PRICE, HIGH_PRICE, LOW_PRICE)
-                VALUES (s.stock_code, s.price_date, s.close_price, s.high_price, s.low_price)
-            """
-            cursor.executemany(sql_merge, all_daily_prices_params)
-        
-        connection.commit()
+        session.commit()
         logger.info(f"✅ DB: 모든 종목의 일봉 데이터 {len(all_daily_prices_params)}건 Bulk 저장 완료.")
     except Exception as e:
         logger.error(f"❌ DB: 모든 종목 일봉 데이터 Bulk 저장 실패! (에러: {e})")
-        if connection:
-            connection.rollback()
-    finally:
-        if cursor:
-            cursor.close()
+        session.rollback()
 
 
-def update_all_stock_fundamentals(connection, all_fundamentals_params: List[dict]):
-    """주요 재무지표(PER, PBR, ROE) Bulk 저장/업데이트"""
-    cursor = None
+def update_all_stock_fundamentals(session, all_fundamentals_params: List[dict]):
+    """
+    [v5.0] 주요 재무지표(PER, PBR, ROE) Bulk 저장/업데이트 (SQLAlchemy)
+    """
+    from sqlalchemy import text
+    
     try:
-        cursor = connection.cursor()
+        for p in all_fundamentals_params:
+            session.execute(text("""
+                INSERT INTO STOCK_FUNDAMENTALS (STOCK_CODE, TRADE_DATE, PER, PBR, ROE, MARKET_CAP)
+                VALUES (:stock_code, :trade_date, :per, :pbr, :roe, :market_cap)
+                ON DUPLICATE KEY UPDATE
+                    PER = VALUES(PER),
+                    PBR = VALUES(PBR),
+                    ROE = VALUES(ROE),
+                    MARKET_CAP = VALUES(MARKET_CAP)
+            """), {
+                'stock_code': p.get('stock_code'),
+                'trade_date': p.get('trade_date'),
+                'per': p.get('per'),
+                'pbr': p.get('pbr'),
+                'roe': p.get('roe'),
+                'market_cap': p.get('market_cap')
+            })
         
-        if _is_mariadb():
-            sql = """
-            INSERT INTO STOCK_FUNDAMENTALS (STOCK_CODE, TRADE_DATE, PER, PBR, ROE, MARKET_CAP)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                PER = VALUES(PER),
-                PBR = VALUES(PBR),
-                ROE = VALUES(ROE),
-                MARKET_CAP = VALUES(MARKET_CAP)
-            """
-            insert_data = []
-            for p in all_fundamentals_params:
-                insert_data.append((
-                    p.get('stock_code'),
-                    p.get('trade_date'),
-                    p.get('per'),
-                    p.get('pbr'),
-                    p.get('roe'),
-                    p.get('market_cap'),
-                ))
-            cursor.executemany(sql, insert_data)
-        else:
-            sql_merge = """
-            MERGE /*+ NO_PARALLEL */ INTO STOCK_FUNDAMENTALS t
-            USING (SELECT TO_DATE(:trade_date, 'YYYY-MM-DD') AS trade_date,
-                          :stock_code AS stock_code, :per AS per, :pbr AS pbr,
-                          :roe AS roe, :market_cap AS market_cap FROM DUAL) s
-            ON (t.STOCK_CODE = s.stock_code AND t.TRADE_DATE = s.trade_date)
-            WHEN MATCHED THEN
-                UPDATE SET t.PER = s.per, t.PBR = s.pbr, t.ROE = s.roe, t.MARKET_CAP = s.market_cap
-            WHEN NOT MATCHED THEN
-                INSERT (STOCK_CODE, TRADE_DATE, PER, PBR, ROE, MARKET_CAP)
-                VALUES (s.stock_code, s.trade_date, s.per, s.pbr, s.roe, s.market_cap)
-            """
-            cursor.executemany(sql_merge, all_fundamentals_params)
-        
-        connection.commit()
+        session.commit()
         logger.info(f"✅ DB: 재무지표 {len(all_fundamentals_params)}건 저장/업데이트 완료.")
     except Exception as e:
         logger.error(f"❌ DB: 재무지표 저장 실패! (에러: {e})")
-        if connection:
-            connection.rollback()
-    finally:
-        if cursor:
-            cursor.close()
+        session.rollback()
 
 
 def get_daily_prices(connection, stock_code: str, limit: int = 30, table_name: str = "STOCK_DAILY_PRICES_3Y") -> pd.DataFrame:
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
+    
+    # SQLAlchemy Session인 경우
+    if isinstance(connection, Session):
+        result = connection.execute(text(f"""
+            SELECT PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
+            FROM {table_name}
+            WHERE STOCK_CODE = :stock_code
+            ORDER BY PRICE_DATE DESC
+            LIMIT :limit
+        """), {"stock_code": stock_code, "limit": limit})
+        rows = result.fetchall()
+        
+        if not rows:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(rows, columns=[
+            "PRICE_DATE", "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "CLOSE_PRICE", "VOLUME"
+        ])
+        df = df.iloc[::-1]  # 날짜 오름차순
+        return df
+    
+    # Raw connection인 경우
     cursor = connection.cursor()
     cursor.execute(f"""
         SELECT PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
@@ -205,9 +233,55 @@ def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, tabl
     """
     여러 종목의 일봉을 한 번에 조회하여 dict[code] = DataFrame 형태로 반환
     """
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
+    
     if not stock_codes:
         return {}
     
+    result = {code: [] for code in stock_codes}
+    
+    # SQLAlchemy Session인 경우
+    if isinstance(connection, Session):
+        # SQLAlchemy에서 IN 절 처리
+        placeholder = ','.join([f':code{i}' for i in range(len(stock_codes))])
+        params = {f'code{i}': code for i, code in enumerate(stock_codes)}
+        
+        query_result = connection.execute(text(f"""
+            SELECT STOCK_CODE, PRICE_DATE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, CLOSE_PRICE, VOLUME
+            FROM {table_name}
+            WHERE STOCK_CODE IN ({placeholder})
+            ORDER BY STOCK_CODE, PRICE_DATE DESC
+        """), params)
+        rows = query_result.fetchall()
+        
+        if not rows:
+            return {}
+        
+        for row in rows:
+            code = row[0]
+            if code in result:
+                result[code].append({
+                    "STOCK_CODE": row[0],
+                    "PRICE_DATE": row[1],
+                    "OPEN_PRICE": row[2],
+                    "HIGH_PRICE": row[3],
+                    "LOW_PRICE": row[4],
+                    "CLOSE_PRICE": row[5],
+                    "VOLUME": row[6],
+                })
+        
+        # dict -> DataFrame 변환 및 날짜 오름차순
+        for code, items in result.items():
+            if not items:
+                continue
+            df = pd.DataFrame(items)
+            df = df.iloc[::-1]
+            result[code] = df
+        
+        return result
+    
+    # Raw connection인 경우
     cursor = connection.cursor()
     # MariaDB에서 리스트 파라미터 처리가 드라이버(PyMySQL/MySQLConnector)에 따라 다를 수 있어 안전하게 문자열 치환 사용
     # *주의: SQL Injection 방지를 위해 stock_codes 내용 검증 필요하나, 내부 로직상 안전하다 가정
@@ -223,8 +297,6 @@ def get_daily_prices_batch(connection, stock_codes: list, limit: int = 120, tabl
     
     if not rows:
         return {}
-    
-    result = {code: [] for code in stock_codes}
     
     # rows를 code별로 묶기
     for row in rows:
