@@ -49,9 +49,9 @@ class TestSentimentScore:
         # When: 새 점수 저장 (100점)
         set_sentiment_score(stock_code, 100, "새 뉴스", redis_client=fake_redis)
         
-        # Then: EMA 적용됨 (기존 70% + 신규 30% = 50*0.7 + 100*0.3 = 65)
+        # Then: EMA 적용됨 (기존 50% + 신규 50% = 50*0.5 + 100*0.5 = 75)
         data = get_sentiment_score(stock_code, redis_client=fake_redis)
-        assert data["score"] == 65.0  # EMA: 50*0.7 + 100*0.3 = 65
+        assert data["score"] == 75.0  # EMA: 50*0.5 + 100*0.5 = 75
     
     def test_get_sentiment_score_not_found(self, fake_redis):
         """존재하지 않는 종목 조회 시 기본값 반환"""

@@ -150,64 +150,49 @@ class TestGetSectorNoDb:
 class TestGetSectorWithDb:
     """DB와 함께 섹터 조회 테스트"""
     
-    @patch('shared.sector_classifier.database.get_db_connection_context')
-    def test_get_sector_from_db(self, mock_db_context, classifier_with_db):
+    @patch('shared.sector_classifier.session_scope')
+    def test_get_sector_from_db(self, mock_session_scope, classifier_with_db):
         """DB에서 섹터 조회"""
-        # Mock DB 결과
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = ('반도체',)
-        
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-        
-        mock_db_context.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_db_context.return_value.__exit__ = MagicMock(return_value=False)
+        # Mock session 및 query 결과
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.scalar.return_value = '반도체'
+        mock_session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_scope.return_value.__exit__ = MagicMock(return_value=False)
         
         sector = classifier_with_db.get_sector('005930', '삼성전자')
         
         assert sector == '반도체'
     
-    @patch('shared.sector_classifier.database.get_db_connection_context')
-    def test_get_sector_db_returns_etc(self, mock_db_context, classifier_with_db):
+    @patch('shared.sector_classifier.session_scope')
+    def test_get_sector_db_returns_etc(self, mock_session_scope, classifier_with_db):
         """DB가 'etc' 반환하면 종목명 기반 추론"""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = ('etc',)  # DB에 'etc'로 저장
-        
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-        
-        mock_db_context.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_db_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.scalar.return_value = 'etc'
+        mock_session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_scope.return_value.__exit__ = MagicMock(return_value=False)
         
         sector = classifier_with_db.get_sector('005930', '삼성전자')
         
         # 'etc'이면 종목명 기반 추론
         assert sector == '정보통신'
     
-    @patch('shared.sector_classifier.database.get_db_connection_context')
-    def test_get_sector_db_error_fallback(self, mock_db_context, classifier_with_db):
+    @patch('shared.sector_classifier.session_scope')
+    def test_get_sector_db_error_fallback(self, mock_session_scope, classifier_with_db):
         """DB 에러 시 종목명 기반 추론으로 폴백"""
-        mock_db_context.side_effect = Exception("DB Error")
+        mock_session_scope.return_value.__enter__ = MagicMock(side_effect=Exception("DB Error"))
         
         sector = classifier_with_db.get_sector('005930', '삼성전자')
         
         # DB 에러면 종목명 기반 추론
         assert sector == '정보통신'
     
-    @patch('shared.sector_classifier.database.get_db_connection_context')
-    def test_get_sector_db_returns_none(self, mock_db_context, classifier_with_db):
+    @patch('shared.sector_classifier.session_scope')
+    def test_get_sector_db_returns_none(self, mock_session_scope, classifier_with_db):
         """DB가 None 반환"""
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = None
-        
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-        
-        mock_db_context.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_db_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.scalar.return_value = None
+        mock_session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_scope.return_value.__exit__ = MagicMock(return_value=False)
         
         sector = classifier_with_db.get_sector('005930', '삼성전자')
         
