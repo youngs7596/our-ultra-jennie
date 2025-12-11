@@ -47,7 +47,7 @@ try:
     import shared.auth as auth
     import shared.database as database
     from shared.llm import JennieBrain # 감성 분석을 위한 JennieBrain 임포트
-    from shared.db.connection import session_scope
+    from shared.db.connection import session_scope, ensure_engine_initialized
     from shared.db.models import WatchList as WatchListModel
     from shared.gemini import ensure_gemini_api_key
     # [v9.1] 경쟁사 수혜 분석 모듈
@@ -129,6 +129,13 @@ def initialize_services():
     run_collection_job() 실행 시에만 호출됩니다.
     """
     global embeddings, text_splitter, db_client, vectorstore, jennie_brain
+    
+    # [v9.2] SQLAlchemy 엔진 초기화 (session_scope 사용 전에 필수)
+    try:
+        ensure_engine_initialized()
+        logger.info("✅ SQLAlchemy 엔진 초기화 완료")
+    except Exception as e:
+        logger.warning(f"⚠️ SQLAlchemy 엔진 초기화 실패: {e}")
     
     logger.info("... [RAG Crawler v8.1] LangChain 및 AI 컴포넌트 초기화 시작 ...")
     try:

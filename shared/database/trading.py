@@ -26,28 +26,55 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 def get_active_watchlist(connection) -> Dict[str, Dict]:
-    cursor = connection.cursor()
-    cursor.execute("SELECT STOCK_CODE, STOCK_NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON FROM WatchList")
-    rows = cursor.fetchall()
-    cursor.close()
+    """
+    WatchList에서 활성 종목 조회
+    SQLAlchemy Session과 raw connection 모두 지원
+    """
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
     
     watchlist = {}
-    for row in rows:
-        if isinstance(row, dict):
-            code = row.get('STOCK_CODE') or row.get('stock_code')
-            name = row.get('STOCK_NAME') or row.get('stock_name')
-            is_tradable = row.get('IS_TRADABLE', True)
-            llm_score = row.get('LLM_SCORE', None)
-            llm_reason = row.get('LLM_REASON', None)
-        else:
-            code, name, is_tradable, llm_score, llm_reason = row
-        watchlist[code] = {
-            "code": code,
-            "name": name,
-            "is_tradable": is_tradable,
-            "llm_score": llm_score,
-            "llm_reason": llm_reason,
-        }
+    
+    # SQLAlchemy Session인지 확인
+    if isinstance(connection, Session):
+        result = connection.execute(text("SELECT STOCK_CODE, STOCK_NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON FROM WatchList"))
+        rows = result.fetchall()
+        for row in rows:
+            code = row[0]
+            name = row[1]
+            is_tradable = row[2]
+            llm_score = row[3]
+            llm_reason = row[4]
+            watchlist[code] = {
+                "code": code,
+                "name": name,
+                "is_tradable": is_tradable,
+                "llm_score": llm_score,
+                "llm_reason": llm_reason,
+            }
+    else:
+        # Legacy: raw connection with cursor
+        cursor = connection.cursor()
+        cursor.execute("SELECT STOCK_CODE, STOCK_NAME, IS_TRADABLE, LLM_SCORE, LLM_REASON FROM WatchList")
+        rows = cursor.fetchall()
+        cursor.close()
+        
+        for row in rows:
+            if isinstance(row, dict):
+                code = row.get('STOCK_CODE') or row.get('stock_code')
+                name = row.get('STOCK_NAME') or row.get('stock_name')
+                is_tradable = row.get('IS_TRADABLE', True)
+                llm_score = row.get('LLM_SCORE', None)
+                llm_reason = row.get('LLM_REASON', None)
+            else:
+                code, name, is_tradable, llm_score, llm_reason = row
+            watchlist[code] = {
+                "code": code,
+                "name": name,
+                "is_tradable": is_tradable,
+                "llm_score": llm_score,
+                "llm_reason": llm_reason,
+            }
     return watchlist
 
 
