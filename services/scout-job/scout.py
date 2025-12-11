@@ -42,7 +42,7 @@ if PROJECT_ROOT not in sys.path:
 
 import shared.auth as auth
 import shared.database as database
-from shared.db.connection import session_scope
+from shared.db.connection import session_scope, ensure_engine_initialized
 from shared.kis import KISClient as KIS_API
 from shared.kis.gateway_client import KISGatewayClient
 from shared.llm import JennieBrain
@@ -427,6 +427,9 @@ def main():
             project_id=os.getenv("GCP_PROJECT_ID", "local"),
             gemini_api_key_secret=os.getenv("SECRET_ID_GEMINI_API_KEY")
         )
+        
+        # [v4.3] SQLAlchemy 세션 초기화 (session_scope 사용 전에 호출 필수)
+        ensure_engine_initialized()
         
         # [v4.3] SQLAlchemy 세션 사용으로 변경
         with session_scope() as session:
