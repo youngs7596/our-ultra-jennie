@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import shared.auth as auth
 import shared.database as database
+from shared.db.connection import ensure_engine_initialized
 from shared.kis.client import KISClient as KIS_API
 from shared.kis.gateway_client import KISGatewayClient
 from shared.config import ConfigManager
@@ -81,6 +82,13 @@ def initialize_service():
             logger.info("✅ DB Connection Pool 초기화 완료")
         else:
             logger.info("✅ DB Connection Pool 이미 초기화됨")
+        
+        # 1.5. SQLAlchemy 엔진 초기화 (session_scope 사용을 위해 필수)
+        try:
+            ensure_engine_initialized()
+            logger.info("✅ SQLAlchemy 엔진 초기화 완료")
+        except Exception as e:
+            logger.warning(f"⚠️ SQLAlchemy 엔진 초기화 실패: {e}")
         
         # 2. KIS API 초기화
         trading_mode = os.getenv("TRADING_MODE", "MOCK")
