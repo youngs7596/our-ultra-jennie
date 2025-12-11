@@ -44,9 +44,11 @@ class DailyReporter:
     def create_and_send_report(self):
         """리포트를 생성하고 텔레그램으로 발송합니다."""
         try:
-            with database.get_db_connection_context() as db_conn:
+            from shared.db.connection import session_scope
+            
+            with session_scope() as session:
                 # 1. 데이터 수집
-                report_data = self._collect_report_data(db_conn)
+                report_data = self._collect_report_data(session)
                 
                 # 2. LLM 기반 보고서 생성
                 if self.claude_client:
@@ -61,7 +63,7 @@ class DailyReporter:
             logger.error(f"리포트 생성 중 오류: {e}", exc_info=True)
             return False
     
-    def _collect_report_data(self, db_conn) -> Dict:
+    def _collect_report_data(self, session) -> Dict:
         """보고서 생성에 필요한 모든 데이터 수집"""
         today_str = datetime.now().strftime('%Y-%m-%d')
         
@@ -69,7 +71,7 @@ class DailyReporter:
         cash_balance = self.kis.get_cash_balance()
         
         # 2. 포트폴리오 현황
-        portfolio = database.get_active_portfolio(db_conn)
+        portfolio = database.get_active_portfolio(session)
         stock_valuation = 0
         portfolio_details = []
         
@@ -99,12 +101,12 @@ class DailyReporter:
         total_aum = cash_balance + stock_valuation
         
         # 3. 금일 거래 내역
-        today_trades = database.get_trade_logs(db_conn, date=today_str)
+        today_trades = database.get_trade_logs(session, date=today_str)
         trade_summary = self._summarize_trades(today_trades)
         
         # 4. Watchlist 현황 (Scout가 선정한 종목들)
         try:
-            watchlist = database.get_watchlist_all(db_conn)
+            watchlist = database.get_watchlist_all(session)
             watchlist_summary = [{
                 'name': w.get('name', 'N/A'),
                 'code': w.get('code', 'N/A'),
@@ -116,13 +118,13 @@ class DailyReporter:
         
         # 5. 최근 뉴스 감성 (있으면)
         try:
-            recent_news = self._get_recent_news_sentiment(db_conn)
+            recent_news = self._get_recent_news_sentiment(session)
         except:
             recent_news = []
         
         # 6. 어제 대비 성과 (있으면)
         try:
-            yesterday_aum = self._get_yesterday_aum(db_conn)
+            yesterday_aum = self._get_yesterday_aum(session)
             daily_change_pct = ((total_aum - yesterday_aum) / yesterday_aum * 100) if yesterday_aum > 0 else 0
         except:
             yesterday_aum = total_aum
@@ -181,20 +183,18 @@ class DailyReporter:
             'details': trade_details[:10]  # 최근 10건만
         }
     
-    def _get_recent_news_sentiment(self, db_conn) -> List[Dict]:
+    def _get_recent_news_sentiment(self, session) -> List[Dict]:
         """최근 뉴스 감성 점수 조회"""
+        from sqlalchemy import text
         try:
-            cursor = db_conn.cursor()
-            query = """
+            result = session.execute(text("""
                 SELECT STOCK_CODE, STOCK_NAME, SENTIMENT_SCORE, HEADLINE
                 FROM NEWS_SENTIMENT 
                 WHERE CREATED_AT >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
                 ORDER BY SENTIMENT_SCORE DESC
                 LIMIT 5
-            """
-            cursor.execute(query)
-            rows = cursor.fetchall()
-            cursor.close()
+            """))
+            rows = result.fetchall()
             
             return [{
                 'code': row[0],
@@ -205,13 +205,12 @@ class DailyReporter:
         except:
             return []
     
-    def _get_yesterday_aum(self, db_conn) -> float:
-        """어제의 총 자산 조회 (간단히 CONFIG에서)"""
+    def _get_yesterday_aum(self, session) -> float:
+        """어제의 총 자산 조회"""
+        from sqlalchemy import text
         try:
-            cursor = db_conn.cursor()
-            cursor.execute("SELECT CONFIG_VALUE FROM CONFIG WHERE CONFIG_KEY = 'DAILY_AUM_YESTERDAY'")
-            row = cursor.fetchone()
-            cursor.close()
+            result = session.execute(text("SELECT CONFIG_VALUE FROM CONFIG WHERE CONFIG_KEY = 'DAILY_AUM_YESTERDAY'"))
+            row = result.fetchone()
             return float(row[0]) if row else 0
         except:
             return 0
