@@ -3,7 +3,8 @@ pipeline {
 
     environment {
         DOCKER_COMPOSE_FILE = 'docker-compose.yml'
-        COMPOSE_PROJECT_NAME = 'my-ultra-jennie-main'
+        // docker-compose.yml의 name: my-ultra-jennie와 일치
+        COMPOSE_PROJECT_NAME = 'my-ultra-jennie'
     }
 
     stages {
@@ -50,7 +51,7 @@ pipeline {
             steps {
                 echo '🐳 Building Docker images...'
                 sh '''
-                    docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} build --no-cache
+                    docker compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} build --no-cache
                 '''
             }
         }
@@ -77,13 +78,13 @@ pipeline {
                         git clean -fd
                         
                         # 2. --profile real 추가해서 기존 real 컨테이너 내리기
-                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real down --remove-orphans --timeout 30 || true
+                        docker compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real down --remove-orphans --timeout 30 || true
                         
                         # 3. --profile real 추가 + 강제 빌드 + 강제 재생성
-                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real up -d --build --force-recreate
+                        docker compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real up -d --build --force-recreate
                         
-                        # 4. 상태 확인 (여기도 profile real을 붙여야 목록에 다 나옵니다)
-                        docker-compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real ps
+                        # 4. 상태 확인
+                        docker compose -p ${COMPOSE_PROJECT_NAME} -f ${DOCKER_COMPOSE_FILE} --profile real ps
                     '''
                 }
             }
