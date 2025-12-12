@@ -161,15 +161,6 @@ services:
     depends_on:
       kis-gateway:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8095/health')" ]
@@ -319,15 +310,6 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')" ]
       interval: 30s
@@ -390,15 +372,6 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')" ]
       interval: 30s
@@ -461,15 +434,6 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8083/health')" ]
       interval: 30s
@@ -530,10 +494,6 @@ services:
     labels:
       - app=command-handler
       - stack=my-ultra-jennie
-    depends_on:
-      redis:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/health')" ]
       interval: 30s
@@ -591,15 +551,6 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')" ]
       interval: 30s
@@ -665,15 +616,6 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8086/health')" ]
       interval: 30s
@@ -735,15 +677,6 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8087/health')" ]
       interval: 30s
@@ -807,15 +740,6 @@ services:
     depends_on:
       scheduler-service:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
-      chromadb:
-        condition: service_healthy
-        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8089/health')" ]
       interval: 30s
