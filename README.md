@@ -46,7 +46,7 @@
 | 📊 **하이브리드 스코어링** | 정량 팩터(60%) + LLM 정성 분석(40%) 결합 |
 | 🎯 **경쟁사 수혜 분석** | 경쟁사 악재 발생 시 반사이익 자동 포착 |
 | 📰 **실시간 뉴스 분석** | 뉴스 감성 분석 및 카테고리 자동 분류 |
-| 🔄 **마이크로서비스 아키텍처** | Docker Compose 기반 10개 서비스 |
+| 🔄 **마이크로서비스 아키텍처** | Docker Compose 기반 11개 서비스 |
 | 📱 **텔레그램 알림** | 매수/매도 체결 실시간 알림 |
 
 ---
@@ -178,7 +178,7 @@ report = analyzer.analyze('035420')  # NAVER
 | **buy-executor** | 8082 | 매수 주문 실행, 포지션 사이징 |
 | **sell-executor** | 8083 | 매도 주문 실행, 익절/손절 |
 | **price-monitor** | 8088 | 실시간 가격 모니터링, 매도 신호 발생 |
-| **command-handler** | 8089 | 텔레그램 명령 수신 → RabbitMQ 발행 (/buy, /sell, /sellall 등) |
+| **command-handler** | 8091 | 텔레그램 명령 수신 → RabbitMQ 발행 (/buy, /sell, /sellall 등) |
 | **news-crawler** | 8089 | 뉴스 수집 및 감성 분석 |
 | **daily-briefing** | 8086 | 일간 브리핑 생성 |
 | **scheduler-service** | 8095 | 작업 스케줄링 (APScheduler) |
@@ -191,8 +191,10 @@ report = analyzer.analyze('035420')  # NAVER
 | **chromadb** | 8000 | 벡터 DB (뉴스 RAG) |
 | **redis** | 6379 | 캐시 및 실시간 상태 |
 | **rabbitmq** | 5672, 15672 | 메시지 큐 (서비스 간 통신) |
-| **grafana** | 3000 | 모니터링 대시보드 |
-| **loki** | 3100 | 로그 집계 |
+| **grafana** | 3300 | 모니터링 대시보드 |
+| **loki** | 3400 | 로그 집계 |
+| **cloudflared** | - | Cloudflare Tunnel (외부 접근) |
+| **jenkins** | 8180 | CI/CD 서버 |
 
 ---
 
@@ -277,6 +279,9 @@ cp secrets.example.json secrets.json
 ### 3. 서비스 실행
 
      ```bash
+# 인프라 서비스 먼저 실행
+docker compose --profile infra up -d
+
 # Real 모드 (실제 거래)
 docker compose --profile real up -d
 
@@ -316,10 +321,12 @@ my-ultra-jennie/
 │   ├── buy-executor/           # 매수 실행
 │   ├── sell-executor/          # 매도 실행
 │   ├── price-monitor/          # 가격 모니터링
+│   ├── command-handler/        # 텔레그램 명령 처리
 │   ├── news-crawler/           # 뉴스 수집
 │   ├── daily-briefing/         # 일간 브리핑
 │   ├── kis-gateway/            # KIS API 게이트웨이
 │   ├── scheduler-service/      # 스케줄러
+│   ├── cloudflared/            # Cloudflare Tunnel
 │   └── dashboard-v2/           # React 대시보드
 │       ├── backend/            # FastAPI
 │       └── frontend/           # React + TypeScript
@@ -364,6 +371,7 @@ my-ultra-jennie/
 │   └── gpt_v2_strategy_presets.json  # 전략 프리셋
 │
 ├── infrastructure/             # 인프라 설정
+│   ├── cloudflared/            # Cloudflare Tunnel 설정
 │   ├── env-vars-wsl.yaml       # WSL2 환경변수 (Real)
 │   └── env-vars-mock.yaml      # Mock 환경변수
 │
@@ -555,28 +563,31 @@ MIN_LLM_SCORE: 70  # Real: 70, Mock: 50
 ### Docker Compose 프로파일
 
 ```bash
+# 인프라 서비스 시작 (먼저 실행 필요)
+docker compose --profile infra up -d
+
 # Real 모드 - 실제 거래
 docker compose --profile real up -d
 
 # Mock 모드 - 시뮬레이션
 docker compose --profile mock up -d
 
-# CI (Jenkins) - Jenkins 전용
-docker compose --profile ci up -d
+# 또는 한 번에 시작 (infra + real)
+docker compose --profile infra --profile real up -d
 ```
 
 프로파일 요약:
 | 프로파일 | 목적 | 비고 |
 |----------|------|------|
-| `real` | 실거래/운영 | 기본 운영용 |
-| `mock` | 모의 실행 | 토큰 절약/시뮬레이션 |
-| `ci` | Jenkins 실행 | 포트 8180 (Jenkins UI) |
+| `infra` | 인프라 서비스 | Redis, RabbitMQ, ChromaDB, Loki, Grafana, Jenkins, Cloudflared |
+| `real` | 실거래/운영 | 기본 운영용 (infra 프로파일 필요) |
+| `mock` | 모의 실행 | 토큰 절약/시뮬레이션 (infra 프로파일 필요) |
 
 ### CI/CD (Jenkins)
 
 로컬 WSL2에서 Jenkins 컨테이너가 호스트의 Docker Daemon을 사용해 배포를 진행합니다.
 
-- 위치: `http://localhost:8180` (프로파일 `ci`)
+- 위치: `http://localhost:8180` (프로파일 `infra`)
 - 이미지: `docker/jenkins/Dockerfile` (Docker CLI 포함)
 - 볼륨: `./jenkins_home:/var/jenkins_home`, `/var/run/docker.sock`, `/home/youngs75/projects/my-ultra-jennie-main` (배포 전용 워킹트리)
 - 파이프라인 동작:
@@ -594,8 +605,8 @@ cd my-ultra-jennie-main && git checkout main
 
 재시작:
 ```bash
-docker compose --profile ci down
-docker compose --profile ci up -d --build
+docker compose --profile infra down
+docker compose --profile infra up -d --build
 ```
 
 ### Mock 모드 설정
@@ -627,7 +638,7 @@ Mock 모드 특징:
 
 ### Grafana 대시보드
 
-- URL: http://localhost:3000
+- URL: http://localhost:3300
 - 기본 계정: admin / admin
 
 ### 로그 조회 (Loki)

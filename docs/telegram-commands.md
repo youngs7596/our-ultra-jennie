@@ -319,8 +319,10 @@ def resolve_stock_code(name_or_code: str) -> tuple:
 
 ## 다음 단계
 
-1. [ ] command-handler 서비스에 Telegram Listener 추가
-2. [ ] Redis flag 연동 (`/pause`, `/resume`)
-3. [ ] docker-compose.yml에 command-handler 서비스 등록
-4. [ ] Phase 1 명령어 구현 및 테스트
-5. [ ] 보안 설정 (Chat ID 화이트리스트)
+1. [x] command-handler 서비스에 Telegram Listener 추가
+2. [x] Redis flag 연동 (`/pause`, `/resume`)
+3. [x] docker-compose.yml에 command-handler 서비스 등록
+4. [x] Phase 1 명령어 구현 및 테스트
+5. [x] 보안 설정 (Chat ID 화이트리스트)
+
+> **✅ 모든 핵심 기능이 구현 완료되었습니다.** (2025-12-12)

@@ -303,23 +303,17 @@ chmod 600 secrets.json  # 소유자만 읽기/쓰기
 
 ## 6. Docker 환경 설정
 
-### 6.1 Docker 네트워크 생성
+### 6.1 인프라 서비스 시작
 
 ```bash
-docker network create jennie-network 2>/dev/null || true
-```
-
-### 6.2 인프라 서비스 시작
-
-```bash
-# Redis, RabbitMQ, ChromaDB 시작
-docker compose up -d redis rabbitmq chromadb
+# 인프라 프로파일로 Redis, RabbitMQ, ChromaDB, Loki, Grafana 등 시작
+docker compose --profile infra up -d
 
 # 상태 확인
 docker compose ps
 ```
 
-### 6.3 서비스 상태 확인
+### 6.2 서비스 상태 확인
 
 ```bash
 # Redis 연결 테스트
@@ -331,6 +325,9 @@ docker exec -it $(docker ps -qf "name=redis") redis-cli PING
 
 # ChromaDB 헬스체크
 curl http://localhost:8000/api/v1/heartbeat
+
+# Grafana 대시보드
+# http://localhost:3300 (admin/admin)
 ```
 
 ---
@@ -376,7 +373,10 @@ SELECT COUNT(*) as price_count FROM STOCK_DAILY_PRICES_3Y;
 ### 8.1 Mock 모드 (테스트용)
 
 ```bash
-# Mock 프로필로 전체 스택 실행
+# 인프라 서비스가 먼저 실행되어 있어야 합니다
+docker compose --profile infra up -d
+
+# Mock 프로필로 애플리케이션 스택 실행
 docker compose --profile mock up -d
 
 # 로그 확인
@@ -391,8 +391,14 @@ docker compose logs -f kis-gateway-mock buy-scanner-mock
 # 장 시간 확인 (09:00~15:30 KST)
 # DRY_RUN=true로 먼저 테스트 권장
 
+# 인프라 서비스 시작 (이미 실행 중이면 생략)
+docker compose --profile infra up -d
+
 # Real 프로필 실행
 docker compose --profile real up -d
+
+# 또는 한 번에 시작
+docker compose --profile infra --profile real up -d
 ```
 
 ### 8.3 개별 서비스 실행 (개발용)
