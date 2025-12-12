@@ -864,7 +864,7 @@ services:
     ports:
       - "8180:8080" # 호스트 8180 → Jenkins 8080
     volumes:
-      - ./jenkins_home:/var/jenkins_home
+      - /docker_data/jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/youngs75/projects/my-ultra-jennie-main:/home/youngs75/projects/my-ultra-jennie-main
     restart: unless-stopped
