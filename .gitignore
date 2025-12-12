@@ -76,5 +76,5 @@ smart_universe.json
 .coverage
 scout_logs.txt
 
-# AI Session Logs (local only)
-.ai/sessions/session-*.md
+# AI Session Logs - Git에는 포함하되 로컬에서만 관리
+# .ai/sessions/session-*.md  # Antigravity 접근 차단 문제로 주석 처리
