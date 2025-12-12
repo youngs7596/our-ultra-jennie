@@ -70,10 +70,14 @@ digraph BuySellDecisionFlow {
         penwidth=2;
         margin=12;
 
+        TELEGRAM [label="Telegram\n수동 명령", fillcolor="#0088cc", color="#00aaff"];
+        CMD_HANDLER [label="Command Handler\n명령 처리", fillcolor="#0088cc", color="#00aaff"];
         BUY_SCAN [label="Buy Scanner\n매수 스캔", fillcolor="#079992", color="#38ada9"];
         MQ_BUY [label="RabbitMQ\nbuy-signals", fillcolor="#f39c12", color="#d68910", shape=cylinder];
         BUY_EXEC [label="Buy Executor\n매수 실행", fillcolor="#079992", color="#38ada9"];
         
+        TELEGRAM -> CMD_HANDLER [color="#0088cc", label="/buy 명령"];
+        CMD_HANDLER -> MQ_BUY [color="#f39c12", label="수동 매수"];
         BUY_SCAN -> MQ_BUY [color="#f39c12", label="매수 후보"];
         MQ_BUY -> BUY_EXEC [color="#f39c12", label="매수 명령"];
     }
@@ -97,6 +101,7 @@ digraph BuySellDecisionFlow {
         SELL_EXEC [label="Sell Executor\n매도 실행", fillcolor="#c0392b", color="#e74c3c"];
         
         PRICE_MON -> MQ_SELL [color="#f39c12", label="매도 신호\n(손절/익절)"];
+        CMD_HANDLER -> MQ_SELL [color="#0088cc", label="/sell, /sellall", ltail=cluster_buy];
         MQ_SELL -> SELL_EXEC [color="#f39c12", label="매도 명령"];
     }
 
@@ -165,7 +170,7 @@ digraph BuySellDecisionFlow {
     // ============================================================
     // 레이아웃 제어
     // ============================================================
-    { rank=same; SCOUT; BUY_SCAN; PRICE_MON; }
+    { rank=same; SCOUT; BUY_SCAN; PRICE_MON; TELEGRAM; }
     { rank=same; DB; KIS; }
 }
 

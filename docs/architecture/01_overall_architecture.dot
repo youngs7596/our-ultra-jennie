@@ -49,8 +49,10 @@ digraph MyUltraJennie {
         
         USER [label="사용자", shape=ellipse, fillcolor="#4a69bd", color="#6a89cc"];
         DASH_V2 [label="Dashboard V2\nReact + FastAPI", fillcolor="#3c6382", color="#60a3bc"];
+        TELEGRAM [label="Telegram\n명령/알림", fillcolor="#0088cc", color="#00aaff"];
         
         USER -> DASH_V2 [color="#3c6382", penwidth=2];
+        USER -> TELEGRAM [color="#0088cc", penwidth=2];
     }
 
     // ============================================================
@@ -101,6 +103,8 @@ digraph MyUltraJennie {
         penwidth=2;
         margin=12;
         
+        SCHEDULER [label="Scheduler Service\n작업 스케줄링", fillcolor="#2c3e50", color="#34495e"];
+        CMD_HANDLER [label="Command Handler\n텔레그램 명령", fillcolor="#0088cc", color="#00aaff"];
         BUY_SCAN [label="Buy Scanner\n매수 스캔", fillcolor="#079992", color="#38ada9"];
         BUY_EXEC [label="Buy Executor\n매수 실행", fillcolor="#079992", color="#38ada9"];
         SELL_EXEC [label="Sell Executor\n매도 실행", fillcolor="#079992", color="#38ada9"];
@@ -109,6 +113,10 @@ digraph MyUltraJennie {
         KIS_GW [label="KIS Gateway\n한국투자증권", fillcolor="#6F1E51", color="#b71540"];
         
         // 내부 연결
+        SCHEDULER -> RABBITMQ [color="#2c3e50", label="Job 트리거", penwidth=2];
+        SCHEDULER -> BUY_SCAN [color="#2c3e50", style=dashed, penwidth=1];
+        SCHEDULER -> SCOUT [color="#2c3e50", style=dashed, penwidth=1];
+        CMD_HANDLER -> RABBITMQ [color="#0088cc", label="수동 명령", penwidth=2];
         BUY_SCAN -> RABBITMQ [color="#f39c12", penwidth=2];
         PRICE_MON -> RABBITMQ [color="#f39c12", penwidth=2];
         RABBITMQ -> BUY_EXEC [color="#f39c12", penwidth=2];
@@ -145,6 +153,7 @@ digraph MyUltraJennie {
     // UI -> Data Storage 연결
     DASH_V2 -> MARIADB [color="#27ae60", label="조회", weight=10, penwidth=2];
     DASH_V2 -> REDIS [color="#e74c3c", label="실시간", penwidth=2];
+    TELEGRAM -> CMD_HANDLER [color="#0088cc", label="명령", penwidth=2];
 
     // ============================================================
     // 클러스터 간 연결

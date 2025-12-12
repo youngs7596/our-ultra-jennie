@@ -87,6 +87,8 @@ digraph MSAModuleLinks {
         penwidth=2;
         margin=12;
 
+        SCHEDULER [label="Scheduler Service\n작업 스케줄링", fillcolor="#2c3e50", color="#34495e"];
+        CMD_HANDLER [label="Command Handler\n텔레그램 명령", fillcolor="#0088cc", color="#00aaff"];
         BUY_SCAN [label="Buy Scanner\n매수 스캔", fillcolor="#079992", color="#38ada9"];
         BUY_EXEC [label="Buy Executor\n매수 실행", fillcolor="#079992", color="#38ada9"];
         SELL_EXEC [label="Sell Executor\n매도 실행", fillcolor="#079992", color="#38ada9"];
@@ -164,6 +166,7 @@ digraph MSAModuleLinks {
         margin=12;
 
         DASH [label="Dashboard V2", fillcolor="#3c6382", color="#60a3bc"];
+        TELEGRAM [label="Telegram", fillcolor="#0088cc", color="#00aaff"];
     }
 
     // ============================================================
@@ -214,5 +217,16 @@ digraph MSAModuleLinks {
     // Dashboard 연결
     DASH -> MARIADB [color="#27ae60"];
     DASH -> REDIS [color="#e74c3c"];
+
+    // Telegram / Command Handler 연결
+    TELEGRAM -> CMD_HANDLER [color="#0088cc"];
+    CMD_HANDLER -> RABBITMQ [color="#f39c12"];
+    CMD_HANDLER -> REDIS [color="#e74c3c"];
+
+    // Scheduler 연결
+    SCHEDULER -> RABBITMQ [color="#2c3e50"];
+    SCHEDULER -> BUY_SCAN [color="#2c3e50", style=dashed];
+    SCHEDULER -> SCOUT [color="#2c3e50", style=dashed];
+    SCHEDULER -> NEWS_CRAWLER [color="#2c3e50", style=dashed];
 }
 
