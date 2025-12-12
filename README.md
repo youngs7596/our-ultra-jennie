@@ -17,6 +17,7 @@
 
 ## 📋 목차
 
+- [AI 세션 관리](#-ai-세션-관리-cross-ide-rules)
 - [개요](#-개요)
 - [핵심 기능](#-핵심-기능)
 - [시스템 아키텍처](#-시스템-아키텍처)
@@ -29,6 +30,77 @@
 - [API 문서](#-api-문서)
 - [설정](#-설정)
 - [테스트](#-테스트)
+
+---
+
+## 🤖 AI 세션 관리 (Cross-IDE Rules)
+
+이 프로젝트는 **Cursor, VS Code, Antigravity, Claude Code** 등 어떤 AI 코딩 환경에서도 일관된 개발 경험을 제공하기 위한 **Cross-IDE 룰 시스템**을 갖추고 있습니다.
+
+### 목적
+- 🔄 **IDE/LLM 변경해도** 같은 개발 스타일 유지
+- 💰 **토큰 절약** - 전체 히스토리 대신 요약만 로드
+- 📋 **작업 연속성** - 세션 간 컨텍스트 인계
+
+### 파일 구조
+
+```
+my-ultra-jennie/
+├── .ai/
+│   ├── RULES.md              ← 마스터 룰 (핵심!)
+│   └── sessions/             ← 세션 핸드오프 파일 저장
+├── .agent/workflows/         ← Antigravity 워크플로우
+│   ├── resume.md             ← /resume 명령
+│   ├── handoff.md            ← /handoff 명령
+│   └── rules.md              ← /rules 명령
+├── .cursorrules              ← Cursor IDE용
+├── .github/
+│   └── copilot-instructions.md  ← VS Code Copilot용
+└── CLAUDE.md                 ← Claude Code용
+```
+
+### IDE별 동작
+
+| IDE | 룰 파일 | 자동 인식 |
+|-----|---------|----------|
+| **Cursor** | `.cursorrules` | ✅ 자동 |
+| **VS Code Copilot** | `.github/copilot-instructions.md` | ✅ 자동 |
+| **Claude Code** | `CLAUDE.md` | ✅ 자동 |
+| **Antigravity** | `.agent/workflows/` | 💬 `/resume` 명령 사용 |
+
+### 워크플로우 명령어 (Antigravity)
+
+| 명령어 | 설명 | 언제 사용? |
+|--------|------|-----------|
+| `/resume` | 이전 세션 이어서 작업 | 새 대화창 시작할 때 |
+| `/handoff` | 현재 세션 저장 및 종료 | 토큰 많이 쓰거나 작업 끝날 때 |
+| `/rules` | 프로젝트 규칙만 로드 | 규칙 확인만 필요할 때 |
+
+### 사용 예시
+
+```
+# 1. 새 대화창에서 이전 작업 이어서 하기
+/resume
+→ AI: "이전 세션에서 Docker profile 작업했네요. 이어서 할까요?"
+
+# 2. 작업 중간에 정리하고 싶을 때
+/handoff 또는 "정리해줘"
+→ AI: "세션 저장 완료! .ai/sessions/session-2025-12-12-11-38.md"
+
+# 3. 다른 IDE (Cursor, VS Code)에서는
+"이어서 하자" 또는 "세션 파일 읽어줘"
+→ 룰 파일 덕분에 자동으로 세션 파일 확인
+```
+
+### 권장 타이밍
+
+| 상황 | `/handoff` 권장 |
+|------|-----------------|
+| 메시지 20~30회 오감 | ✅ 권장 |
+| 큰 기능 1개 완료 | ✅ 권장 |
+| 파일 5개 이상 수정 | ✅ 권장 |
+| AI 응답이 느려짐 | 🚨 필수 |
+| 하루 작업 끝 | 🚨 필수 |
 
 ---
 
