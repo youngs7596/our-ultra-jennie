@@ -21,6 +21,7 @@ pipeline {
                 docker {
                     image 'python:3.11-slim'
                     args '-v $PWD:/app -w /app'
+                    reuseNode true
                 }
             }
             steps {
