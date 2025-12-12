@@ -163,10 +163,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8095/health')" ]
@@ -198,10 +201,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9095/health')" ]
       interval: 30s
@@ -315,10 +321,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')" ]
       interval: 30s
@@ -349,10 +358,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 4. Buy Executor (매수 실행)
@@ -380,10 +392,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')" ]
       interval: 30s
@@ -414,10 +429,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 5. Sell Executor (매도 실행)
@@ -445,10 +463,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8083/health')" ]
       interval: 30s
@@ -479,10 +500,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 5.5. Command Handler (Telegram 명령 처리)
@@ -509,6 +533,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/health')" ]
       interval: 30s
@@ -538,6 +563,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 6. Price Monitor (가격 모니터링)
@@ -567,10 +593,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')" ]
       interval: 30s
@@ -604,10 +633,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 7. Daily Briefing (일일 브리핑)
@@ -635,10 +667,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8086/health')" ]
       interval: 30s
@@ -668,10 +703,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 8. Scout Job (종목 발굴)
@@ -699,10 +737,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8087/health')" ]
       interval: 30s
@@ -734,10 +775,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 9. News Crawler (뉴스 수집)
@@ -765,10 +809,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8089/health')" ]
       interval: 30s
@@ -800,10 +847,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       chromadb:
         condition: service_healthy
+        required: false
 
   # ============================================================================
   # 10. Dashboard V2 (React + FastAPI)
