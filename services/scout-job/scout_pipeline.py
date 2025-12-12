@@ -185,7 +185,7 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
         hunter_score = min(100, hunter_score + competitor_bonus)
         logger.info(f"   🎯 [경쟁사 수혜] {info['name']}({code}) +{competitor_bonus}점 가산 ({competitor_reason})")
     
-    passed = hunter_score >= 75
+    passed = hunter_score >= 60  # [v1.1] 75→60 완화 (v4와 동일)
     if hunter_score == 0: passed = False
     
     if passed:

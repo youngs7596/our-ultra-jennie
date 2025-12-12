@@ -596,10 +596,10 @@ def main():
                             stock_info, quant_scorer, session, kospi_prices
                         )
                     
-                    # Step 2: 정량 기반 1차 필터링 (하위 50% 탈락)
-                    logger.info(f"\n   [v5 Step 2] 정량 기반 1차 필터링 (하위 50% 탈락)")
+                    # Step 2: 정량 기반 1차 필터링 (하위 20% 탈락) - [v1.1] 필터링 완화
+                    logger.info(f"\n   [v5 Step 2] 정량 기반 1차 필터링 (하위 20% 탈락)")
                     quant_result_list = list(quant_results.values())
-                    filtered_results = quant_scorer.filter_candidates(quant_result_list, cutoff_ratio=0.5)
+                    filtered_results = quant_scorer.filter_candidates(quant_result_list, cutoff_ratio=0.2)
                     
                     filtered_codes = {r.stock_code for r in filtered_results}
                     logger.info(f"   ✅ 정량 필터 통과: {len(filtered_codes)}개 (평균 점수: {sum(r.total_score for r in filtered_results)/len(filtered_results):.1f}점)")

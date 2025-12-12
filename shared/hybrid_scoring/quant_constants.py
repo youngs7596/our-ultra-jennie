@@ -14,7 +14,7 @@ class StrategyMode(Enum):
 
 
 # 기본값
-DEFAULT_FILTER_CUTOFF = 0.5
+DEFAULT_FILTER_CUTOFF = 0.2  # [v1.1] 0.5→0.2 완화 (하위 20% 탈락)
 DEFAULT_HOLDING_DAYS = 5
 
 # 섹터별 RSI 가중치
