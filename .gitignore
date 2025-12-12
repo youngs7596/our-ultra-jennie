@@ -75,3 +75,6 @@ smart_universe.json
 
 .coverage
 scout_logs.txt
+
+# AI Session Logs (local only)
+.ai/sessions/session-*.md
