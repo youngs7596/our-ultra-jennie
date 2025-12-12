@@ -310,7 +310,7 @@ class ClaudeLLMProvider(BaseLLMProvider):
             try:
                 response = self.client.messages.create(
                     model=target_model,
-                    max_tokens=4096,
+                    max_tokens=8192,  # [v1.1] 4096→8192 (Debate JSON 잘림 방지)
                     temperature=temperature,
                     system="You are a helpful assistant. Always respond with valid JSON only, no markdown formatting.",
                     messages=[{"role": "user", "content": prompt}]
@@ -362,7 +362,7 @@ class ClaudeLLMProvider(BaseLLMProvider):
                 
                 response = self.client.messages.create(
                     model=target_model,
-                    max_tokens=2048,
+                    max_tokens=4096,  # [v1.1] 2048→4096
                     temperature=temperature,
                     system=system_msg,
                     messages=messages
