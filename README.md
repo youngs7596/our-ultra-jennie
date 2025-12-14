@@ -376,10 +376,10 @@ docker compose run --rm scout-job python scripts/init_competitor_data.py
 
 ---
 
-## 🔧 리팩토링 진행 상황
-- `shared/database.py`를 도메인별 모듈로 분리 중이며, 기존 API는 wrapper/re-export로 유지합니다.
-- 가격·펀더멘털·일봉 관련 함수는 `shared/database_price.py`로 이동 완료 (`save_all_daily_prices`, `update_all_stock_fundamentals`, `get_daily_prices`, `get_daily_prices_batch`).
-- 상세 계획은 `docs/database-refactor-plan.md`를 참고하세요.
+## 📅 진행 상황 (Change Log)
+- **[2025-12-14] Scout V6 업데이트**: Kill Switch(리스크 필터), Foreign Dip Buying(외국인 수급 눌림목 매수), Real Mode 배포 완료.
+- **[2025-12 WA] Database 리팩토링**: `shared/database` 패키지로 도메인별 분리 완료 (`market.py`, `trading.py`, `core.py` 등).
+- **[2025-12-08] 수동 매매 명령어**: 텔레그램 `/buy`, `/sell` 등 지원.
 
 ---
 
