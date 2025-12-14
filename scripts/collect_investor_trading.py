@@ -334,8 +334,9 @@ def main():
         return
     
     # DB 연결
-    db_config = get_db_config()
-    conn = database.get_db_connection(**db_config)
+    # DB 연결
+    # shared.database.get_db_connection handles config internally or via env vars
+    conn = database.get_db_connection()
     if not conn:
         logger.error("❌ DB 연결 실패")
         return

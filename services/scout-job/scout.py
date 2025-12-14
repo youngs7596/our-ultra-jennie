@@ -28,7 +28,7 @@ import redis
 
 # 로깅 설정을 모든 import 보다 먼저 수행
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s] - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )

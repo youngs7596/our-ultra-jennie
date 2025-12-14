@@ -111,6 +111,30 @@ def search_stock_by_name(connection, name: str) -> Optional[Dict]:
     }
 
 
+def get_all_stock_codes(connection) -> List[str]:
+    """
+    [v5.0] 모든 종목 코드 조회
+    """
+    from sqlalchemy.orm import Session
+    from sqlalchemy import text
+    
+    # SQLAlchemy Session인 경우
+    if isinstance(connection, Session):
+        result = connection.execute(text("SELECT STOCK_CODE FROM STOCK_MASTER"))
+        return [row[0] for row in result.fetchall()]
+    
+    # Raw connection인 경우
+    cursor = connection.cursor()
+    cursor.execute("SELECT STOCK_CODE FROM STOCK_MASTER")
+    rows = cursor.fetchall()
+    cursor.close()
+    
+    if not rows:
+        return []
+        
+    return [row[0] for row in rows]
+
+
 # ============================================================================
 # [Price] 주가/펀더멘털 조회 및 저장
 # ============================================================================
