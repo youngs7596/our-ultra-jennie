@@ -199,6 +199,18 @@ report = analyzer.analyze('035420')  # NAVER
 | 오너리스크 | 구속, 기소, 횡령 | -12점 | +3점 |
 | 규제 | 과징금, 제재, 공정위 | -8점 | +5점 |
 
+### 5. Market Flow Analysis (수급 분석)
+
+**"돈의 흐름을 읽는다"**
+
+Scout 파이프라인(Phase 1.8)에서 종목별 투자 주체(외국인/기관/개인)의 매수세를 분석합니다.
+
+- **데이터 소스**: KIS API (`get_investor_trend`)
+- **수집 항목**: 외국인 순매수, 기관 순매수, 개인 순매수
+- **활용**:
+    - LLM 토론 시 근거 자료로 활용 ("외국인이 3일 연속 매집 중입니다.")
+    - `MARKET_FLOW_SNAPSHOT` 테이블에 축적하여 향후 패턴 학습에 사용.
+
 ---
 
 ## 🏗 시스템 아키텍처
@@ -395,6 +407,8 @@ docker compose run --rm scout-job python scripts/init_competitor_data.py
 ---
 
 ## 📅 진행 상황 (Change Log)
+- **[2025-12-16] Cycle 4: Market Flow Strategy**: 외국인/기관 수급 분석 (`get_investor_trend`) 및 Scout 파이프라인 연동.
+- **[2025-12-16] Cycle 3: Logic Refinement**: 키워드 기반 동적 토론자(Context-Aware Persona) 구현.
 - **[2025-12-14] Scout V6 업데이트**: Kill Switch(리스크 필터), Foreign Dip Buying(외국인 수급 눌림목 매수), Real Mode 배포 완료.
 - **[2025-12 WA] Database 리팩토링**: `shared/database` 패키지로 도메인별 분리 완료 (`market.py`, `trading.py`, `core.py` 등).
 - **[2025-12-08] 수동 매매 명령어**: 텔레그램 `/buy`, `/sell` 등 지원.

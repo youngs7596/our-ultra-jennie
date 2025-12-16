@@ -168,19 +168,39 @@ class JennieBrain:
              return "Debate Skipped (Model Error)"
 
         try:
-            # Pass hunter_score to build_debate_prompt for dynamic role switching
-            prompt = build_debate_prompt(stock_info, hunter_score) 
+            # [v6.0] Extract keywords for Dynamic Debate Context
+            keywords = stock_info.get('dominant_keywords', [])
             
-            logger.info(f"--- [JennieBrain/Debate] 토론 시작 via {provider.name} (HunterScore: {hunter_score}) ---")
+            # Pass hunter_score and keywords to build_debate_prompt
+            prompt = build_debate_prompt(stock_info, hunter_score, keywords) 
             
-            result = provider.generate_chat(prompt, temperature=0.7)
-            return result
+            # [v6.0 Fix] generate_chat requires list of dicts, not str
+            chat_history = [{"role": "user", "content": prompt}]
+            
+            logger.info(f"--- [JennieBrain/Debate] 토론 시작 via {provider.name} (HunterScore: {hunter_score}, KW: {keywords}) ---")
+            
+            result = provider.generate_chat(chat_history, temperature=0.7)
+            # If result is dict (e.g. from structured output), extracting text. 
+            # generate_chat usually returns dict with 'text' or json. 
+            # But the caller expects str. 
+            if isinstance(result, dict):
+                return result.get('text') or result.get('content') or str(result)
+            return str(result)
+
         except Exception as e:
             logger.warning(f"⚠️ [Debate] Local LLM failed: {e}. Attempting Cloud Fallback...")
             try:
                 fallback_provider = self._get_provider(LLMTier.THINKING)
+                if fallback_provider is None:
+                    raise ValueError("Fallback provider (Thinking Tier) not available")
+
                 logger.info(f"--- [JennieBrain/Debate] Cloud Fallback via {fallback_provider.name} ---")
-                return fallback_provider.generate_chat(prompt, temperature=0.7)
+                chat_history = [{"role": "user", "content": prompt}]
+                result = fallback_provider.generate_chat(chat_history, temperature=0.7)
+                
+                if isinstance(result, dict):
+                    return result.get('text') or result.get('content') or str(result)
+                return str(result)
             except Exception as fb_e:
                 logger.error(f"❌ [Debate] Fallback failed: {fb_e}")
                 return f"Debate Error: {e}"
@@ -245,6 +265,9 @@ class JennieBrain:
             logger.warning(f"⚠️ [v5-Hunter] Local LLM failed: {e}. Attempting Cloud Fallback...")
             try:
                 fallback_provider = self._get_provider(LLMTier.THINKING)
+                if fallback_provider is None:
+                    raise ValueError("Fallback provider (Thinking Tier) not available")
+
                 logger.info(f"--- [JennieBrain/v5-Hunter] Cloud Fallback via {fallback_provider.name} ---")
                 result = fallback_provider.generate_json(
                     prompt,
@@ -333,8 +356,13 @@ class JennieBrain:
         """
         try:
             logger.info(f"--- [JennieBrain/Briefing] 리포트 생성 via {provider.name} ---")
-            result = provider.generate_chat(prompt, temperature=0.7)
-            return result
+            # [v6.0 Fix] generate_chat requires list of dicts
+            chat_history = [{"role": "user", "content": prompt}]
+            result = provider.generate_chat(chat_history, temperature=0.7)
+            
+            if isinstance(result, dict):
+                return result.get('text') or result.get('content') or str(result)
+            return str(result)
         except Exception as e:
             logger.error(f"❌ [Briefing] 실패: {e}")
             return "보고서 생성 중 오류가 발생했습니다."

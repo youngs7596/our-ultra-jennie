@@ -309,6 +309,80 @@ class MarketData:
         logger.info(f"   (Data) ✅ [{stock_code}] 분봉 데이터 {len(rows)}건 수신 완료.")
         return rows
 
+    def get_investor_trend(self, stock_code: str, start_date: str = None, end_date: str = None):
+        """
+        [v4.0 NEW] 종목별 투자자(외국인/기관/개인) 매매 동향 조회
+        TR_ID: FHKST01010900 (국내주식투자자별일별매매상위) - *확인 필요*
+        실제로는 'inquire-investor' 엔드포인트 사용 (종목별유효기간별매매거래실적추이)
+        
+        Args:
+            stock_code: 종목 코드
+            start_date: 시작일 (YYYYMMDD) - None이면 최근 30일
+            end_date: 종료일 (YYYYMMDD) - None이면 오늘
+        
+        Returns:
+            List[dict]: 일별 투자자 매매 동향
+        """
+        if not end_date:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
+            
+        URL = f"{self.client.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-investor"
+        
+        # TR_ID 확인: FHKST01010900 (투자자별매매동향/기간별)
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": stock_code,
+            "FID_INPUT_DATE_1": start_date,
+            "FID_INPUT_DATE_2": end_date
+        }
+        tr_id = "FHKST01010900" 
+        
+        logger.info(f"   (Data) [{stock_code}] 투자자 동향 조회 ({start_date}~{end_date})")
+        res_data = self.client.request('GET', URL, params=params, tr_id=tr_id)
+        
+        rows = []
+        if res_data and res_data.get('output'):
+            for item in res_data['output']:
+                try:
+                    # 필드명 매핑 (KIS API 문서 기준)
+                    # stck_bsop_date: 날짜
+                    # prsn_ntby_qty: 개인순매수수량
+                    # frgn_ntby_qty: 외국인순매수수량
+                    # orgn_ntby_qty: 기관계순매수수량
+                    # (금액 기준 필드도 있을 수 있음: prsn_ntby_tr_pbmn 등)
+                    
+                    rows.append({
+                        'date': item['stck_bsop_date'],
+                        'price': float(item.get('stck_clpr', 0)),
+                        'individual_net_buy': int(item.get('prsn_ntby_qty', 0)),
+                        'foreigner_net_buy': int(item.get('frgn_ntby_qty', 0)),
+                        'institution_net_buy': int(item.get('orgn_ntby_qty', 0)),
+                        'pension_net_buy': int(item.get('ntik_ntby_qty', 0) or 0), # 연기금 (있다면)
+                        'program_net_buy': 0 # 별도 API 필요할 수 있음
+                    })
+                except Exception as e:
+                    continue
+        
+        return rows
+
+    def get_program_trend(self, stock_code: str, start_date: str = None, end_date: str = None):
+        """
+        [v4.0 NEW] 종목별 프로그램 매매 동향 조회
+        TR_ID: FHKST01010600 (프로그램매매종합) - *종목별 아닐 수 있음*
+        대체: 'inquire-program-trade' (가칭, 문서 확인 필요) 확인불가 시 투자자 동향에서 추출 시도.
+        
+        *KIS Open API에는 종목별 프로그램 매매 추이 전용 URL이 명확치 않음.*
+        따라서 투자자 동향 응답에 포함되지 않는 경우, 별도로 구현하거나 생략.
+        
+        현재는 Skeleton만 구현하고, 실제 API 응답 확인 후 보완 예정.
+        """
+        # NOTE: KIS API에서 종목별 프로그램 매매 추이 엔드포인트를 찾기 어려움.
+        # 일단 빈 리스트 반환하도록 처리 후 추후 보완.
+        logger.warning(f"   (Data) [{stock_code}] 프로그램 매매 동향 API 미구현 (KIS 문서 확인 필요)")
+        return []
+
     def get_stock_history_by_chart(self, stock_code: str, period_code: str = 'D', start_date: str = None, end_date: str = None):
         """
         [New] 차트 API를 사용하여 대량의 과거 데이터(최대 1000건 이상)를 조회합니다.

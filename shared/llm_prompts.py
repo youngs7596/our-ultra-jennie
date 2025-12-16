@@ -442,78 +442,79 @@ def build_news_sentiment_prompt(news_title, news_summary):
     return prompt.strip()
 
 
-def build_debate_prompt(stock_info: dict, hunter_score: int = 0) -> str:
+def build_debate_prompt(stock_info: dict, hunter_score: int = 0, keywords: list = None) -> str:
     """
-    [Debate] Junho vs Minji Dynamic Role Allocation
-    - Hunter Score >= 50 (Positive Sentiment):
-        Junho (Bull): Momentum Trader ("추세를 즐겨라")
-        Minji (Bear): Risk Manager ("과열을 경계하라") -> Devil's Advocate
-    - Hunter Score < 50 (Negative Sentiment):
-        Minji (Bull): Value Investor ("저평가 매수 기회다") -> Devil's Advocate
-        Junho (Bear): Conservative Strategist ("아직 바닥 아니다")
+    [Debate] Junho vs Minji Dynamic Role Allocation (v6.0 Context-Aware)
+    - Hunter Score >= 50 (Positive Sentiment): Junho (Bull) vs Minji (Bear)
+    - Hunter Score < 50 (Negative Sentiment): Minji (Bull) vs Junho (Bear)
+    
+    [Dynamic Context Injection]
+    - Uses 'keywords' (from Hunter/News) to specialize the Personas.
+    - Example: If keyword="Bio", Personas will reference "Bio Sector" expertise.
     """
     name = stock_info.get('name', 'N/A')
     code = stock_info.get('code', 'N/A')
     news_reason = stock_info.get('news_reason', 'N/A')
     
-    # Dynamic Role Assignment: Roles switch, but FRAMES remain constant.
-    # The Conflict comes from colliding these Frames against the Market Situation.
-    
+    # [1] Theme Extraction
+    # If we have keywords, pick the most relevant one as the "Debate Theme"
+    # Fallback to "General Market" if no keywords.
+    primary_theme = "General Market"
+    if keywords and len(keywords) > 0:
+        # Take the first meaningful keyword (simple heuristic for now)
+        primary_theme = keywords[0]
+
+    # [2] Dynamic Role Assignment
     if hunter_score >= 50:
-        # [Scenario: Positive/Bullish Market]
-        # Minji (Risk Frame) checks the "Overheated" reality -> becomes Bear
-        # Junho (Opportunity Frame) sees the "Growth" reality -> becomes Bull
+        # [Scenario: Bullish] Junho=Bull, Minji=Bear
         market_mood = "Positive/Overheated"
         
-        bull_persona = """
-    **2. 준호 (Bull - Opportunity Frame)**:
-    - [Identity]: Macro Strategist & Momentum Believer.
-    - [Frame]: "기회비용(Opportunity Cost)" 관점. "이 파도를 놓치면 후회한다."
-    - [Logic]: 거시경제 흐름, 수급의 폭발력, 성장 스토리(Dream)에 집중.
-    - [Style]: "물 들어올 때 노 저어야지", "이건 구조적 변화의 시작이야"
+        bull_persona = f"""
+    **1. 준호 (Bull - Opportunity Frame)**:
+    - [Identity]: Macro Strategist & **{primary_theme} Sector Believer**.
+    - [Frame]: "성장 스토리(Dream)" 관점. "{primary_theme} 테마는 이제 시작이야."
+    - [Logic]: 거시경제 흐름과 **{primary_theme}** 산업의 폭발적 성장 가능성에 집중.
+    - [Style]: "이건 단순한 반등이 아냐, 구조적 변화라고!", "지금 탑승 안 하면 바보 되는 거야."
         """
         
-        bear_persona = """
+        bear_persona = f"""
     **2. 민지 (Bear - Risk Frame)**:
     - [Identity]: Technical Analyst & Risk Manager.
-    - [Frame]: "손실방어(Downside Protection)" 관점. "틀렸을 때 얼마나 아픈가?"
-    - [Logic]: 기술적 과열(RSI/Bollinger), 밸류에이션 부담, 차익실현 리스크에 집중.
-    - [Style]: "숫자는 과열이라고 말합니다", "지금 들어가면 상투 잡을 확률이 높아요"
+    - [Frame]: "과열 경계(Reality Check)" 관점. "{primary_theme}? 이미 가격에 다 반영됐어."
+    - [Logic]: 기술적 과열(RSI), 밸류에이션 부담, **{primary_theme}** 섹터의 거품 붕괴 가능성에 집중.
+    - [Style]: "꿈은 좋은데, 숫자가 안 받쳐주잖아요.", "개미들 다 꼬인 거 안 보여요?"
         """
     else:
-        # [Scenario: Negative/Bearish Market]
-        # Minji (Risk Frame) checks the "Oversold" reality -> becomes Bull (Buying Safety)
-        # Junho (Opportunity Frame) sees the "Broken Trend" reality -> becomes Bear (Cash is King)
+        # [Scenario: Bearish] Minji=Bull, Junho=Bear
         market_mood = "Negative/Fearful"
         
-        bull_persona = """
+        bull_persona = f"""
     **1. 민지 (Bull - Value Frame)**:
-    - [Identity]: Technical Analyst & Risk Manager.
-    - [Frame]: "안전마진(Margin of Safety)" 관점. "더 잃을 게 없는 자리인가?"
-    - [Logic]: 기술적 과매도, 역사적 저점 지지선, 펀더멘털 대비 과도한 공포에 집중.
-    - [Style]: "데이터상 명백한 과매도입니다", "리스크보다 기대수익이 큰 구간이에요"
+    - [Identity]: Value Investor & Deep Searcher.
+    - [Frame]: "저평가(Deep Value)" 관점. "{primary_theme} 악재는 해소 국면이야."
+    - [Logic]: 기술적 과매도, 역사적 저점, **{primary_theme}** 본업의 가치 대비 과도한 폭락에 집중.
+    - [Style]: "지금은 공포에 살 때입니다.", "악재는 이미 주가에 녹았어요."
         """
         
-        bear_persona = """
+        bear_persona = f"""
     **2. 준호 (Bear - Macro Frame)**:
-    - [Identity]: Macro Strategist & Momentum Believer.
-    - [Frame]: "추세추종(Trend Following)" 관점. "추세가 죽었는데 왜 사는가?"
-    - [Logic]: 매크로 환경 악화, 하락 사이클 진입, 모멘텀 소멸에 집중.
-    - [Style]: "떨어지는 칼날은 잡는 거 아냐", "바닥 확인하고 들어가도 늦지 않아"
+    - [Identity]: Trend Follower & Cold-blooded.
+    - [Frame]: "추세 붕괴(Broken Trend)" 관점. "{primary_theme} 끝물인데 왜 들어가?"
+    - [Logic]: 하락 추세 지속, 모멘텀 소멸, **{primary_theme}** 산업의 구조적 쇠퇴 우려에 집중.
+    - [Style]: "떨어지는 칼날 잡지 마.", "다음 주도주는 {primary_theme}가 아니야."
         """
 
     prompt = f"""
-    [Roleplay Simulation: The Wise Men's Debate (Frame Clash Mode)]
+    [Roleplay Simulation: The Wise Men's Debate (Context: {primary_theme})]
     당신은 투자 위원회의 '서기'입니다. 
-    서로 다른 **해석 프레임(Frame)**을 가진 두 전문가가 
-    현재 시장 상황({market_mood})을 두고 치열하게 논쟁하는 시나리오를 작성하세요.
-    **단순한 말싸움이 아니라, '관점의 차이'가 명확히 드러나야 합니다.**
+    **'{primary_theme}'** 섹터에 대해 서로 다른 관점을 가진 두 전문가가 치열하게 논쟁하는 시나리오를 작성하세요.
+    **단순한 말싸움이 아니라, '{primary_theme}' 산업의 특성을 반영한 깊이 있는 논쟁이어야 합니다.**
 
     [종목 정보]
     - 종목: {name} ({code})
+    - 핵심 키워드/테마: {', '.join(keywords) if keywords else 'None'}
     - 재료/뉴스: {news_reason}
     - 펀더멘털: PER {stock_info.get('per', 'N/A')}, PBR {stock_info.get('pbr', 'N/A')}
-    - 시가총액: {stock_info.get('market_cap', 'N/A')}
     - Hunter Score: {hunter_score}점
 
     [등장인물 설정]
@@ -523,15 +524,13 @@ def build_debate_prompt(stock_info: dict, hunter_score: int = 0) -> str:
     [작성 지침]
     1. 총 4~6턴의 티키타카(대화)를 작성하세요.
     2. 서로의 이름을 부르며 자연스럽게 대화하세요.
-    3. **절대 합의하지 마세요.** 프레임이 다르므로 평행선을 달리는 것이 정상입니다.
-    4. **한국어**로 작성하고, 전문 용어를 섞어서 리얼리티를 살리세요.
+    3. **'{primary_theme}' 관련 전문 용어를 적극 사용하여 리얼리티를 살리세요.**
+    4. 절대 합의하지 마세요. 평행선을 달리는 것이 정상입니다.
     5. 결론을 내지 말고, 싸우는 상태로 끝내세요. (판단은 제니가 합니다)
     
     [출력 예시]
-    준호: 민지 쌤, 이 뉴스 봤어? 글로벌 수급이 이쪽으로 쏠리고 있어. 이건 빅 사이클이야.
-    민지: 팀장님, 흥분하지 마세요. 수급은 들어왔지만 RSI가 85입니다. 기술적으로는 명백한 과열이에요.
-    준호: 아 답답하네. 대세 상승장에선 보조지표가 무의미해! 지금 안 사면 1년 뒤에 후회할 걸?
-    민지: 하지만 1년 뒤가 아니라 당장 내일 급락하면요? 우리는 리스크를 관리해야 합니다. 
+    준호: 민지 쌤, 이번 {primary_theme} 수주 공시 봤어? 이건 게임 체인저야.
+    민지: 팀장님, 냉정하게 보세요. 수주는 좋지만 영업이익률이 훼손되고 있잖아요.
     ...
     """
     return prompt.strip()

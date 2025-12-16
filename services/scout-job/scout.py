@@ -542,6 +542,59 @@ def main():
                     news_hash_count += 1
             logger.info(f"   (Hash) ✅ 뉴스 해시 {news_hash_count}개 반영 완료")
 
+            # [v4.0] Phase 1.8: 수급 데이터(Market Flow) 분석 및 기록
+            logger.info("--- [Phase 1.8] 수급 데이터(Market Flow) 분석 (Foreign/Institution) ---")
+            
+            # [Optimization] 병렬로 투자자 동향 조회
+            investor_flow_cache = {}
+            
+            # Archivist 초기화 (여기서도 사용)
+            if 'archivist' not in locals():
+                archivist = Archivist(session_scope)
+                
+            def process_flow_data(code):
+                try:
+                    # 최근 1일치(오늘/어제) 데이터만 조회하여 현재 수급 확인
+                    # 장 중이면 오늘 잠정치/확정치, 장 마감 후면 오늘 확정치
+                    trends = kis_api.get_market_data().get_investor_trend(code, start_date=None, end_date=None)
+                    if not trends:
+                        return code, None
+                    
+                    # 가장 최근 데이터 (오늘)
+                    latest = trends[-1]
+                    return code, latest
+                except Exception as e:
+                    return code, None
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                futures = [executor.submit(process_flow_data, code) for code in candidate_stocks.keys()]
+                for future in as_completed(futures):
+                    code, flow_data = future.result()
+                    if flow_data:
+                        investor_flow_cache[code] = flow_data
+                        
+                        # 후보군 정보에 수급 데이터 추가 (LLM 프롬프트용)
+                        candidate_stocks[code]['market_flow'] = {
+                            'foreign_net_buy': flow_data['foreigner_net_buy'],
+                            'institution_net_buy': flow_data['institution_net_buy'],
+                            'individual_net_buy': flow_data['individual_net_buy']
+                        }
+                        
+                        # Archivist에 기록 (Market Flow Snapshot)
+                        try:
+                            # flow_data는 dict 형태 (date, price, foreign..., institution...)
+                            # Archivist.log_market_flow_snapshot은 stock_code를 포함한 dict를 기대함
+                            log_payload = flow_data.copy()
+                            log_payload['stock_code'] = code
+                            # volume 필드가 get_investor_trend 결과에 없으므로 (필요시) 보완
+                            # log_payload['volume'] = ... 
+                            
+                            archivist.log_market_flow_snapshot(log_payload)
+                        except Exception as log_e:
+                            logger.warning(f"Failed to log market flow for {code}: {log_e}")
+
+            logger.info(f"   (Flow) ✅ 수급 데이터 {len(investor_flow_cache)}개 종목 분석 및 기록 완료")
+
             # Phase 2: LLM 최종 선정
             logger.info("--- [Phase 2] LLM 기반 최종 Watchlist 선정 시작 ---")
             update_pipeline_status(
