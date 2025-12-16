@@ -561,6 +561,27 @@ print(result.base_score)         # -15
 print(result.competitor_benefit) # +10
 ```
 
+### The Archivist (shared/archivist.py)
+
+**[v6.0] Long-Term Data Strategy implementation.**
+Responsibility for the robust recording of all critical data for future AI learning.
+
+- **Decision Ledger**: Records the full context of LLM decisions (Debate, Logic, Outcome).
+- **Shadow Radar**: Logs missed opportunities (candidates rejected by filters) for calibration.
+- **Market Flow**: Daily snapshot of Foreigner/Institution/Program buy flow.
+
+```python
+from shared.archivist import Archivist
+
+archivist = Archivist(session_factory)
+archivist.log_decision_ledger({
+    'stock_code': '005930',
+    'final_decision': 'BUY',
+    'reason': 'Dominant market share...',
+    'debate_log': '...'
+})
+```
+
 ---
 
 ## 🗃 데이터베이스 스키마

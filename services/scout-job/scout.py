@@ -48,6 +48,7 @@ from shared.kis.gateway_client import KISGatewayClient
 from shared.llm import JennieBrain
 from shared.financial_data_collector import batch_update_watchlist_financial_data
 from shared.gemini import ensure_gemini_api_key  # [v3.0] Local Gemini Auth 추가
+from shared.archivist import Archivist  # [v6.0] Data Strategy Logger
 
 import chromadb
 from langchain_chroma import Chroma
@@ -658,8 +659,15 @@ def main():
                         
                         with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
                             future_to_code = {}
+                            
+                            # [v6.0] Archivist 초기화
+                            archivist = Archivist(session_scope)
+
                             for p1_result in phase1_passed:
-                                future = executor.submit(process_phase23_judge_v5_task, p1_result, brain)
+                                future = executor.submit(
+                                    process_phase23_judge_v5_task, 
+                                    p1_result, brain, archivist, current_regime
+                                )
                                 future_to_code[future] = p1_result['code']
                             
                             for future in as_completed(future_to_code):

@@ -644,3 +644,126 @@ class DailyQuantScore(Base):
     # 메타 정보
     market_regime = Column("MARKET_REGIME", String(20), nullable=True)
     created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+# =============================================================================
+# [v6.0] Long-Term Data Strategy Models (Jennie/Minji/Junho)
+# =============================================================================
+
+class LLMDecisionLedger(Base):
+    """
+    [Priority 1] The Brain's Memory
+    - LLM의 모든 의사결정 과정, 토론 내용, 판단 근거를 기록
+    - 나중에 Fine-tuning 및 성과 분석에 사용 (Why we acted/didn't act)
+    """
+    __tablename__ = "LLM_DECISION_LEDGER"
+    __table_args__ = {"extend_existing": True}
+
+    log_id = Column("LOG_ID", Integer, primary_key=True)
+    timestamp = Column("TIMESTAMP", DateTime, default=datetime.utcnow) # UTC Standard
+    
+    # Context
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    stock_name = Column("STOCK_NAME", String(100), nullable=True)
+    hunter_score = Column("HUNTER_SCORE", Float, nullable=True)
+    market_regime = Column("MARKET_REGIME", String(50), nullable=True) # Bull/Bear/Neutral
+    dominant_keywords_json = Column("DOMINANT_KEYWORDS_JSON", Text, nullable=True) # ["Lithium", "War"]
+    
+    # Process (The Debate)
+    debate_log = Column("DEBATE_LOG", Text, nullable=True) # Full Text of Debate
+    counter_position_logic = Column("COUNTER_POSITION_LOGIC", Text, nullable=True) # Summary of Opposing View
+    
+    # Ops Data (Junho's Request)
+    thinking_called = Column("THINKING_CALLED", Integer, default=0) # 1=True
+    thinking_reason = Column("THINKING_REASON", String(100), nullable=True)
+    cost_estimate = Column("COST_ESTIMATE", Float, default=0.0)
+    gate_result = Column("GATE_RESULT", String(20), nullable=True) # PASS / REJECT
+    
+    # Outcome
+    final_decision = Column("FINAL_DECISION", String(20), nullable=False) # BUY / SELL / HOLD / NO_DECISION
+    final_reason = Column("FINAL_REASON", String(2000), nullable=True) # 1-line reason
+    
+    # Schema Version
+    schema_v = Column("SCHEMA_V", String(10), default="1.0")
+
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+class ShadowRadarLog(Base):
+    """
+    [Priority 2] The Shadow Radar (Missed Opportunities)
+    - 필터링되어 탈락했으나, 나중에 급등/급변한 종목들의 기록
+    - '나중에 쫄보 필터 튜닝'을 위한 데이터
+    """
+    __tablename__ = "SHADOW_RADAR_LOG"
+    __table_args__ = {"extend_existing": True}
+
+    log_id = Column("LOG_ID", Integer, primary_key=True)
+    timestamp = Column("TIMESTAMP", DateTime, default=datetime.utcnow)
+    
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    stock_name = Column("STOCK_NAME", String(100), nullable=True)
+    
+    # Why Missed?
+    rejection_stage = Column("REJECTION_STAGE", String(50), nullable=True) # Hunter / Gate / Judge
+    rejection_reason = Column("REJECTION_REASON", String(1000), nullable=True)
+    hunter_score_at_time = Column("HUNTER_SCORE_AT_TIME", Float, nullable=True)
+    
+    # Trigger (Why we are looking back?)
+    trigger_type = Column("TRIGGER_TYPE", String(50), nullable=True) # PRICE_SURGE / VOL_SHOCK
+    trigger_value = Column("TRIGGER_VALUE", Float, nullable=True) # e.g. +15.5%
+    
+    schema_v = Column("SCHEMA_V", String(10), default="1.0")
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+class MarketFlowSnapshot(Base):
+    """
+    [Priority 2.5/3] Market Flow (Trend Foundations)
+    - 일별/장중 수급 데이터 (외인, 기관, 프로그램)
+    """
+    __tablename__ = "MARKET_FLOW_SNAPSHOT"
+    __table_args__ = {"extend_existing": True}
+
+    snapshot_id = Column("SNAPSHOT_ID", Integer, primary_key=True)
+    timestamp = Column("TIMESTAMP", DateTime, default=datetime.utcnow) # UTC
+    
+    stock_code = Column("STOCK_CODE", String(20), nullable=False, index=True)
+    
+    # Price
+    price = Column("PRICE", Float, nullable=True)
+    volume = Column("VOLUME", Float, nullable=True)
+    
+    # Flow (Net Buy Amount/Volume)
+    foreign_net_buy = Column("FOREIGN_NET_BUY", Float, nullable=True)
+    institution_net_buy = Column("INSTITUTION_NET_BUY", Float, nullable=True)
+    program_net_buy = Column("PROGRAM_NET_BUY", Float, nullable=True)
+    
+    # Meta
+    data_type = Column("DATA_TYPE", String(20), default="DAILY") # DAILY / INTRADAY
+    schema_v = Column("SCHEMA_V", String(10), default="1.0")
+    
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+
+
+class StockMinutePrice(Base):
+    """
+    [Priority 3] Targeted Intraday Data
+    - 1-minute OHLCV data for Shadow Radar candidates
+    """
+    __tablename__ = "STOCK_MINUTE_PRICE"
+    __table_args__ = {"extend_existing": True}
+
+    price_time = Column("PRICE_TIME", DateTime, primary_key=True) # UTC or KST? Usually KST in DB, but we use UTC for timestamp. Let's assume this is the candle time.
+    stock_code = Column("STOCK_CODE", String(20), primary_key=True, index=True)
+    
+    open_price = Column("OPEN_PRICE", Float)
+    high_price = Column("HIGH_PRICE", Float)
+    low_price = Column("LOW_PRICE", Float)
+    close_price = Column("CLOSE_PRICE", Float)
+    volume = Column("VOLUME", Float) # Candle volume
+    
+    accum_volume = Column("ACCUM_VOLUME", Float, nullable=True) # Cumulative volume for the day
+    
+    created_at = Column("CREATED_AT", DateTime, server_default=func.now())
+

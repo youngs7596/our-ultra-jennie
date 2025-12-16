@@ -208,7 +208,7 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
     }
 
 
-def process_phase23_judge_v5_task(phase1_result, brain):
+def process_phase23_judge_v5_task(phase1_result, brain, archivist=None, market_regime="UNKNOWN"):
     """
     [v1.0] Phase 2-3: Debate + Judge (정량 컨텍스트 포함)
     
@@ -285,6 +285,39 @@ def process_phase23_judge_v5_task(phase1_result, brain):
     # [v1.0] 스냅샷에서 재무 데이터 추출
     snapshot = phase1_result.get('snapshot') or {}
     
+    # [Priority 1] Log to Decision Ledger (Archivist)
+    if archivist:
+        try:
+            # Determine Final Decision
+            final_decision = "HOLD"
+            if approved:
+                final_decision = "BUY"
+            
+            # Extract keywords from info['reasons'] (simple heuristic)
+            reasons = info.get('reasons', [])
+            keywords = []
+            for r in reasons:
+                keywords.extend([w for w in r.split() if len(w) > 1][:3])
+
+            ledger_data = {
+                'stock_code': code,
+                'stock_name': info['name'],
+                'hunter_score': hunter_score,
+                'market_regime': market_regime,
+                'dominant_keywords': keywords,
+                'debate_log': debate_log,
+                'counter_position_logic': debate_log[:500] if debate_log else None, # Placeholder for explicit extraction
+                'thinking_called': 1 if judge_result.get('grade') != 'D' else 0, # Rough proxy
+                'thinking_reason': "Judge_v5",
+                'cost_estimate': 0.0, # Placeholder
+                'gate_result': 'PASS' if score > 0 else 'REJECT',
+                'final_decision': final_decision,
+                'final_reason': reason
+            }
+            archivist.log_decision_ledger(ledger_data)
+        except Exception as e:
+            logger.error(f"   ⚠️ [Archivist] Failed to log decision: {e}")
+
     return {
         'code': code,
         'name': info['name'],
