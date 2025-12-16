@@ -353,13 +353,17 @@ class OpenAILLMProvider(BaseLLMProvider):
         # If secrets are provided, fetch them. Ideally passed from factory or env.
         # Fallback to direct env var for simplicity in Factory pattern if secret manager is tricky without project_id
         api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key and project_id and openai_api_key_secret:
+
+        # [Fix] Fallback to secrets.json using environment variable key ID
+        if not api_key:
              from . import auth
-             api_key = auth.get_secret(openai_api_key_secret, project_id)
+             # Try to get key ID from env, default to 'openai-api-key'
+             secret_id = os.getenv("SECRET_ID_OPENAI_API_KEY", "openai-api-key")
+             api_key = auth.get_secret(secret_id)
         
         if not api_key:
              # Just log warning, might rely on env var that OpenAI client picks up automatically
-             pass 
+             logger.warning("⚠️ OpenAI API Key not found in env or secrets.json") 
         
         self.client = self._openai_module(api_key=api_key)
         self.default_model = os.getenv("OPENAI_MODEL_NAME", "gpt-5-mini")

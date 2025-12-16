@@ -898,6 +898,10 @@ services:
       - "11434:11434"
     volumes:
       - /docker_data/ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MAX_LOADED_MODELS=2
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_KEEP_ALIVE=5m
     restart: unless-stopped
     networks:
       - msa-network
