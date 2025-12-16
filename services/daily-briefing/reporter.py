@@ -1,45 +1,37 @@
 # services/daily-briefing/reporter.py
-# Version: v4.0
+# Version: v5.0
 # Daily Briefing Service - LLM 기반 일일 보고서 생성
-# LLM: Claude Opus 4.5 (최고 품질 보고서)
+# [v5.0] Centralized LLM using JennieBrain (Factory Pattern)
 
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
-import anthropic
 
 import shared.database as database
 import shared.auth as auth
+from shared.llm import JennieBrain
 
 logger = logging.getLogger(__name__)
 
 
 class DailyReporter:
-    """LLM 기반 일일 브리핑 리포터 (Claude Opus 4.5)"""
+    """LLM 기반 일일 브리핑 리포터 (Powered by JennieBrain)"""
     
     def __init__(self, kis_client, telegram_bot):
         self.kis = kis_client
         self.bot = telegram_bot
-        self.claude_client = None
-        self._init_claude()
-        
-    def _init_claude(self):
-        """Claude API 클라이언트 초기화"""
+        # [v5.0] JennieBrain 초기화 (Factory/Tier 자동 처리)
         try:
-            # secrets.json에서 API 키 로드
-            api_key = auth._load_local_secrets().get("claude-api-key")
-            if not api_key:
-                api_key = os.getenv("ANTHROPIC_API_KEY")
+            secrets = auth._load_local_secrets()
+            project_id = secrets.get("project_id", "my-ultra-jennie")
+            gemini_key_secret = "gemini-api-key" # Legacy init param, not strictly used in v6 Factory
             
-            if api_key:
-                self.claude_client = anthropic.Anthropic(api_key=api_key)
-                logger.info("✅ Claude Opus 4.5 클라이언트 초기화 완료")
-            else:
-                logger.warning("⚠️ Claude API 키가 없습니다. 기본 보고서로 대체됩니다.")
+            self.jennie_brain = JennieBrain(project_id, gemini_key_secret)
+            logger.info("✅ DailyReporter: JennieBrain 연결 완료")
         except Exception as e:
-            logger.error(f"❌ Claude 클라이언트 초기화 실패: {e}")
-            self.claude_client = None
+            logger.error(f"❌ DailyReporter JennieBrain 초기화 실패: {e}")
+            self.jennie_brain = None
         
     def create_and_send_report(self):
         """리포트를 생성하고 텔레그램으로 발송합니다."""
@@ -50,9 +42,16 @@ class DailyReporter:
                 # 1. 데이터 수집
                 report_data = self._collect_report_data(session)
                 
-                # 2. LLM 기반 보고서 생성
-                if self.claude_client:
-                    message = self._generate_llm_report(report_data)
+                # 2. LLM 기반 보고서 생성 (Centralized)
+                if self.jennie_brain:
+                    # 데이터 요약 생성
+                    market_summary_text = self._format_market_summary(report_data)
+                    execution_log_text = self._format_execution_log(report_data)
+                    
+                    message = self.jennie_brain.generate_daily_briefing(
+                        market_summary_text, 
+                        execution_log_text
+                    )
                 else:
                     message = self._format_basic_message(report_data)
                 
@@ -104,7 +103,7 @@ class DailyReporter:
         today_trades = database.get_trade_logs(session, date=today_str)
         trade_summary = self._summarize_trades(today_trades)
         
-        # 4. Watchlist 현황 (Scout가 선정한 종목들)
+        # 4. Watchlist 현황
         try:
             watchlist = database.get_watchlist_all(session)
             watchlist_summary = [{
@@ -112,24 +111,24 @@ class DailyReporter:
                 'code': w.get('code', 'N/A'),
                 'llm_score': w.get('llm_score', 0),
                 'filter_reason': w.get('filter_reason', 'N/A')[:100] if w.get('filter_reason') else 'N/A'
-            } for w in watchlist[:10]]  # 상위 10개만
+            } for w in watchlist[:10]]
         except:
             watchlist_summary = []
         
-        # 5. 최근 뉴스 감성 (있으면)
+        # 5. 최근 뉴스
         try:
             recent_news = self._get_recent_news_sentiment(session)
         except:
             recent_news = []
-        
-        # 6. 어제 대비 성과 (있으면)
+            
+        # 6. 어제 대비 AUM 변동
         try:
             yesterday_aum = self._get_yesterday_aum(session)
             daily_change_pct = ((total_aum - yesterday_aum) / yesterday_aum * 100) if yesterday_aum > 0 else 0
         except:
             yesterday_aum = total_aum
             daily_change_pct = 0
-        
+            
         return {
             'date': today_str,
             'total_aum': total_aum,
@@ -143,7 +142,51 @@ class DailyReporter:
             'daily_change_pct': daily_change_pct,
             'yesterday_aum': yesterday_aum
         }
-    
+
+    def _format_market_summary(self, data: Dict) -> str:
+        """시장 정보 데이터 (LLM 입력용 Text)"""
+        # 여기서는 간단히 자산 현황과 뉴스 기반으로 요약
+        # 실제로는 지수 정보 등을 KIS에서 가져오면 더 좋음
+        
+        news_text = "\n".join([f"- {n['name']}: {n['headline']} (감성: {n['score']})" for n in data['recent_news']])
+        
+        summary = f"""
+        [자산 현황]
+        - 날짜: {data['date']}
+        - 총 운용자산: {data['total_aum']:,.0f}원 (변동: {data['daily_change_pct']:+.2f}%)
+        - 현금 비중: {data['cash_ratio']:.1f}%
+
+        [주요 뉴스]
+        {news_text if news_text else "특이 뉴스 없음"}
+        """
+        return summary
+
+    def _format_execution_log(self, data: Dict) -> str:
+        """실행 로그 데이터 (LLM 입력용 Text)"""
+        trades = data['trades']
+        portfolio = data['portfolio']
+        
+        trade_logs = []
+        if trades['buy_count'] > 0 or trades['sell_count'] > 0:
+            for t in trades['details']:
+                action = "매수" if t['action'] == "BUY" else "매도"
+                trade_logs.append(f"- {action}: {t['name']} {t['quantity']}주 ({t['reason']})")
+        else:
+            trade_logs.append("금일 체결된 매매 없음")
+            
+        pf_logs = []
+        for p in portfolio:
+            status = "수익중" if p['profit_pct'] > 0 else "손실중"
+            pf_logs.append(f"- {p['name']}: {status} ({p['profit_pct']:+.2f}%)")
+            
+        return f"""
+        [매매 수행]
+        {chr(10).join(trade_logs)}
+        
+        [현재 포트폴리오]
+        {chr(10).join(pf_logs) if pf_logs else "보유 종목 없음"}
+        """
+
     def _summarize_trades(self, trades: List) -> Dict:
         """거래 내역 요약"""
         buy_count = 0
@@ -215,135 +258,6 @@ class DailyReporter:
         except:
             return 0
     
-    def _generate_llm_report(self, data: Dict) -> str:
-        """Claude Opus 4.5를 사용하여 일일 보고서 생성"""
-        
-        # 프롬프트 구성
-        prompt = f"""당신은 'Supreme Jennie'입니다. 영석님의 AI 투자 비서로서, 오늘 하루의 투자 활동을 분석하고 
-따뜻하면서도 전문적인 일일 브리핑을 작성해주세요.
-
-## 오늘의 데이터 ({data['date']})
-
-### 💰 자산 현황
-- 총 운용 자산(AUM): {data['total_aum']:,.0f}원
-- 현금 잔고: {data['cash_balance']:,.0f}원 ({data['cash_ratio']:.1f}%)
-- 주식 평가액: {data['stock_valuation']:,.0f}원
-- 어제 대비 변동: {data['daily_change_pct']:+.2f}%
-
-### 📊 금일 거래 활동 (모두 체결 완료!)
-- 매수 체결: {data['trades']['buy_count']}건 (총 {data['trades']['total_buy_amount']:,.0f}원)
-- 매도 체결: {data['trades']['sell_count']}건 (총 {data['trades']['total_sell_amount']:,.0f}원)
-- 실현 손익: {data['trades']['realized_profit']:,.0f}원
-{self._format_trade_details_for_llm(data['trades']['details'])}
-
-### 💼 보유 종목
-{self._format_portfolio_for_llm(data['portfolio'])}
-
-### 🎯 Scout 추천 종목 (Watchlist)
-{self._format_watchlist_for_llm(data['watchlist'])}
-
-### 📰 최근 주요 뉴스 감성
-{self._format_news_for_llm(data['recent_news'])}
-
----
-
-## 요청사항
-
-위 데이터를 바탕으로 텔레그램용 일일 브리핑을 작성해주세요.
-
-### 작성 가이드라인:
-1. **톤**: Jennie답게 친근하면서도 전문적으로 (이모지 적절히 사용)
-2. **구조**: 
-   - 📅 인사 + 날짜
-   - 💰 자산 현황 요약
-   - 📊 금일 성과 분석 (좋았던 점, 아쉬운 점)
-   - 💼 보유 종목 코멘트 (주요 종목 2-3개)
-   - 🎯 내일 전략 제안
-   - 💕 마무리 인사
-
-3. **분량**: 텔레그램에 적합하게 500자 내외
-4. **Markdown**: 텔레그램 Markdown 형식 사용 (*bold*, `code` 등)
-
-### 특별 요청:
-- 숫자는 읽기 쉽게 천 단위 콤마 사용
-- 수익/손실에 따라 적절한 감정 표현
-- 구체적인 종목명과 수치 언급
-- 영석님을 격려하는 따뜻한 멘트로 마무리
-"""
-
-        try:
-            response = self.claude_client.messages.create(
-                model="claude-opus-4-5",
-                max_tokens=1500,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            report = response.content[0].text
-            logger.info("✅ Claude Opus 4.5 일일 보고서 생성 완료")
-            return report
-            
-        except Exception as e:
-            logger.error(f"❌ LLM 보고서 생성 실패: {e}")
-            return self._format_basic_message(data)
-    
-    def _format_portfolio_for_llm(self, portfolio: List[Dict]) -> str:
-        """포트폴리오를 LLM 프롬프트용으로 포맷"""
-        if not portfolio:
-            return "- 보유 종목 없음"
-        
-        lines = []
-        for item in portfolio:
-            emoji = "🔴" if item['profit_pct'] > 0 else ("🔵" if item['profit_pct'] < 0 else "⚪")
-            lines.append(
-                f"- {item['name']}({item['code']}): "
-                f"{item['quantity']}주, 평가 {item['valuation']:,.0f}원, "
-                f"수익률 {item['profit_pct']:+.2f}% ({emoji})"
-            )
-        return "\n".join(lines)
-    
-    def _format_watchlist_for_llm(self, watchlist: List[Dict]) -> str:
-        """Watchlist를 LLM 프롬프트용으로 포맷"""
-        if not watchlist:
-            return "- 추천 종목 없음"
-        
-        lines = []
-        for item in watchlist:
-            lines.append(
-                f"- {item['name']}({item['code']}): "
-                f"LLM 점수 {item['llm_score']}점 - {item['filter_reason'][:50]}..."
-            )
-        return "\n".join(lines)
-    
-    def _format_news_for_llm(self, news: List[Dict]) -> str:
-        """뉴스를 LLM 프롬프트용으로 포맷"""
-        if not news:
-            return "- 특이 뉴스 없음"
-        
-        lines = []
-        for item in news:
-            emoji = "🔥" if item['score'] >= 70 else ("⚠️" if item['score'] <= 30 else "📰")
-            lines.append(
-                f"{emoji} {item['name']}: 감성 {item['score']}점 - {item['headline']}"
-            )
-        return "\n".join(lines)
-    
-    def _format_trade_details_for_llm(self, details: List[Dict]) -> str:
-        """거래 상세 내역을 LLM 프롬프트용으로 포맷"""
-        if not details:
-            return ""
-        
-        lines = ["#### 체결 상세:"]
-        for trade in details:
-            action_emoji = "🟢" if trade['action'] == 'BUY' else "🔴"
-            action_kr = "매수" if trade['action'] == 'BUY' else "매도"
-            lines.append(
-                f"  {action_emoji} [{action_kr} 체결] {trade['name']}: "
-                f"{trade['quantity']}주 x {trade['price']:,.0f}원 = {trade['amount']:,.0f}원"
-            )
-        return "\n".join(lines)
-    
     def _format_basic_message(self, data: Dict) -> str:
         """LLM 없이 기본 메시지 포맷팅 (폴백)"""
         
@@ -373,12 +287,7 @@ class DailyReporter:
                 lines.append(f"{p_emoji} {item['name']}: {item['profit_pct']:+.2f}%")
         
         lines.append("")
-        lines.append("🤖 *Jennie's Comment*")
-        if profit > 0:
-            lines.append("오늘도 수익을 냈어요! 🎉")
-        elif profit < 0:
-            lines.append("내일은 더 잘할게요! 💪")
-        else:
-            lines.append("기회를 노리는 중이에요! 👀")
+        lines.append("🤖 *Jennie's Comment (Basic Mode)*")
+        lines.append("오늘은 기본적인 요약만 전달드려요. 그래도 화이팅입니다! 💪")
             
         return "\n".join(lines)

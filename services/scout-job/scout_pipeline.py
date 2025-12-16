@@ -228,8 +228,8 @@ def process_phase23_judge_v5_task(phase1_result, brain):
     # 정량 컨텍스트 생성
     quant_context = format_quant_score_for_prompt(quant_result)
     
-    # Phase 2: Debate (Bull vs Bear)
-    debate_log = brain.run_debate_session(decision_info)
+    # Phase 2: Debate (Bull vs Bear) - Dynamic Roles based on Hunter Score
+    debate_log = brain.run_debate_session(decision_info, hunter_score=hunter_score)
     
     # Phase 3: Judge (정량 컨텍스트 포함)
     judge_result = brain.run_judge_scoring_v5(decision_info, debate_log, quant_context)
@@ -392,7 +392,7 @@ def process_phase23_debate_judge_task(phase1_result, brain):
     
     logger.info(f"   🔄 [Phase 2-3] {info['name']}({code}) Debate-Judge 시작...")
     
-    debate_log = brain.run_debate_session(decision_info)
+    debate_log = brain.run_debate_session(decision_info, hunter_score=hunter_score)
     
     judge_result = brain.run_judge_scoring(decision_info, debate_log)
     score = judge_result.get('score', 0)
@@ -501,7 +501,7 @@ def process_llm_decision_task(stock_info, kis_api, brain):
     
     logger.info(f"   ✅ [Phase 1 통과] {info['name']}({code}) - Hunter점수: {hunter_score}점 -> Debate 진출")
 
-    debate_log = brain.run_debate_session(decision_info)
+    debate_log = brain.run_debate_session(decision_info, hunter_score=hunter_score)
     
     judge_result = brain.run_judge_scoring(decision_info, debate_log)
     score = judge_result.get('score', 0)

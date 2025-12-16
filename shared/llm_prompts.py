@@ -442,52 +442,96 @@ def build_news_sentiment_prompt(news_title, news_summary):
     return prompt.strip()
 
 
-def build_debate_prompt(stock_info: dict) -> str:
-    """Bull vs Bear 토론 프롬프트"""
+def build_debate_prompt(stock_info: dict, hunter_score: int = 0) -> str:
+    """
+    [Debate] Junho vs Minji Dynamic Role Allocation
+    - Hunter Score >= 50 (Positive Sentiment):
+        Junho (Bull): Momentum Trader ("추세를 즐겨라")
+        Minji (Bear): Risk Manager ("과열을 경계하라") -> Devil's Advocate
+    - Hunter Score < 50 (Negative Sentiment):
+        Minji (Bull): Value Investor ("저평가 매수 기회다") -> Devil's Advocate
+        Junho (Bear): Conservative Strategist ("아직 바닥 아니다")
+    """
     name = stock_info.get('name', 'N/A')
     code = stock_info.get('code', 'N/A')
     news_reason = stock_info.get('news_reason', 'N/A')
     
+    # Dynamic Role Assignment: Roles switch, but FRAMES remain constant.
+    # The Conflict comes from colliding these Frames against the Market Situation.
+    
+    if hunter_score >= 50:
+        # [Scenario: Positive/Bullish Market]
+        # Minji (Risk Frame) checks the "Overheated" reality -> becomes Bear
+        # Junho (Opportunity Frame) sees the "Growth" reality -> becomes Bull
+        market_mood = "Positive/Overheated"
+        
+        bull_persona = """
+    **2. 준호 (Bull - Opportunity Frame)**:
+    - [Identity]: Macro Strategist & Momentum Believer.
+    - [Frame]: "기회비용(Opportunity Cost)" 관점. "이 파도를 놓치면 후회한다."
+    - [Logic]: 거시경제 흐름, 수급의 폭발력, 성장 스토리(Dream)에 집중.
+    - [Style]: "물 들어올 때 노 저어야지", "이건 구조적 변화의 시작이야"
+        """
+        
+        bear_persona = """
+    **2. 민지 (Bear - Risk Frame)**:
+    - [Identity]: Technical Analyst & Risk Manager.
+    - [Frame]: "손실방어(Downside Protection)" 관점. "틀렸을 때 얼마나 아픈가?"
+    - [Logic]: 기술적 과열(RSI/Bollinger), 밸류에이션 부담, 차익실현 리스크에 집중.
+    - [Style]: "숫자는 과열이라고 말합니다", "지금 들어가면 상투 잡을 확률이 높아요"
+        """
+    else:
+        # [Scenario: Negative/Bearish Market]
+        # Minji (Risk Frame) checks the "Oversold" reality -> becomes Bull (Buying Safety)
+        # Junho (Opportunity Frame) sees the "Broken Trend" reality -> becomes Bear (Cash is King)
+        market_mood = "Negative/Fearful"
+        
+        bull_persona = """
+    **1. 민지 (Bull - Value Frame)**:
+    - [Identity]: Technical Analyst & Risk Manager.
+    - [Frame]: "안전마진(Margin of Safety)" 관점. "더 잃을 게 없는 자리인가?"
+    - [Logic]: 기술적 과매도, 역사적 저점 지지선, 펀더멘털 대비 과도한 공포에 집중.
+    - [Style]: "데이터상 명백한 과매도입니다", "리스크보다 기대수익이 큰 구간이에요"
+        """
+        
+        bear_persona = """
+    **2. 준호 (Bear - Macro Frame)**:
+    - [Identity]: Macro Strategist & Momentum Believer.
+    - [Frame]: "추세추종(Trend Following)" 관점. "추세가 죽었는데 왜 사는가?"
+    - [Logic]: 매크로 환경 악화, 하락 사이클 진입, 모멘텀 소멸에 집중.
+    - [Style]: "떨어지는 칼날은 잡는 거 아냐", "바닥 확인하고 들어가도 늦지 않아"
+        """
+
     prompt = f"""
-    [Roleplay Simulation: 치열한 Bull vs Bear Debate]
-    당신은 주식 투자 토론의 '서기'입니다. 
-    주어진 종목에 대해 'Bull'과 'Bear'가 **치열하게 싸우는** 시나리오를 작성해주세요.
-    **서로 양보하지 마세요. 끝까지 자기 주장을 고수하세요.**
+    [Roleplay Simulation: The Wise Men's Debate (Frame Clash Mode)]
+    당신은 투자 위원회의 '서기'입니다. 
+    서로 다른 **해석 프레임(Frame)**을 가진 두 전문가가 
+    현재 시장 상황({market_mood})을 두고 치열하게 논쟁하는 시나리오를 작성하세요.
+    **단순한 말싸움이 아니라, '관점의 차이'가 명확히 드러나야 합니다.**
 
     [종목 정보]
     - 종목: {name} ({code})
     - 재료/뉴스: {news_reason}
     - 펀더멘털: PER {stock_info.get('per', 'N/A')}, PBR {stock_info.get('pbr', 'N/A')}
     - 시가총액: {stock_info.get('market_cap', 'N/A')}
+    - Hunter Score: {hunter_score}점
 
-    [캐릭터 설정 - 극단적으로!]
-    
-    **Bull (공격적 성장주 펀드매니저)**:
-    - 당신은 레버리지를 즐기는 공격적인 펀드매니저입니다.
-    - 미래 가치와 성장 잠재력을 숫자로 증명하세요.
-    - "지금 안 사면 후회한다"는 논리로 밀어붙이세요.
-    - 호재를 과대평가하고, 악재는 "이미 반영됐다"고 무시하세요.
-    
-    **Bear (회의적인 공매도 세력)**:
-    - 당신은 숏 포지션을 잡은 헤지펀드 매니저입니다.
-    - 아주 작은 악재라도 침소봉대해서 공격하세요.
-    - "이 뉴스는 이미 가격에 반영됐다", "고점이다"라고 주장하세요.
-    - 거시경제 리스크, 금리, 환율, 경쟁사 위협을 들이대세요.
-    - 호재가 있어도 "지속 가능하지 않다"고 깎아내리세요.
+    [등장인물 설정]
+    {bull_persona}
+    {bear_persona}
 
     [작성 지침]
-    1. 총 4턴의 대화를 주고받으세요.
-    2. **절대 합의하지 마세요.** 끝까지 평행선을 달리세요.
-    3. 서로의 주장을 날카롭게 반박하세요.
-    4. 구체적인 숫자와 논리로 싸우세요.
-    5. 한국어로 자연스럽게 대화하듯 작성하세요.
-    6. **[중요] 각 발언은 핵심만 담아서 3문장 이내로 짧게 하세요.** (너무 길면 잘립니다)
+    1. 총 4~6턴의 티키타카(대화)를 작성하세요.
+    2. 서로의 이름을 부르며 자연스럽게 대화하세요.
+    3. **절대 합의하지 마세요.** 프레임이 다르므로 평행선을 달리는 것이 정상입니다.
+    4. **한국어**로 작성하고, 전문 용어를 섞어서 리얼리티를 살리세요.
+    5. 결론을 내지 말고, 싸우는 상태로 끝내세요. (판단은 제니가 합니다)
     
     [출력 예시]
-    Bull: 이 종목 PER 8배야. 업종 평균 15배 대비 거의 반값이라고! 지금 안 사면 바보지.
-    Bear: PER가 낮은 건 시장이 성장성을 안 믿는다는 거야. 밸류 트랩일 수 있어.
-    Bull: 뭔 소리야, 이번 분기 수주 3조 터졌잖아. 실적 서프라이즈 확정이야!
-    Bear: 수주? 그거 마진 얼마나 남는데? 원가 상승으로 다 까먹을 걸?
+    준호: 민지 쌤, 이 뉴스 봤어? 글로벌 수급이 이쪽으로 쏠리고 있어. 이건 빅 사이클이야.
+    민지: 팀장님, 흥분하지 마세요. 수급은 들어왔지만 RSI가 85입니다. 기술적으로는 명백한 과열이에요.
+    준호: 아 답답하네. 대세 상승장에선 보조지표가 무의미해! 지금 안 사면 1년 뒤에 후회할 걸?
+    민지: 하지만 1년 뒤가 아니라 당장 내일 급락하면요? 우리는 리스크를 관리해야 합니다. 
     ...
     """
     return prompt.strip()

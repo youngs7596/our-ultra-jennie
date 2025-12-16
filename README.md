@@ -284,9 +284,27 @@ report = analyzer.analyze('035420')  # NAVER
 - **Google Gemini** - 뉴스 임베딩 (ChromaDB RAG)
 - **ChromaDB** - 벡터 저장소 (뉴스 RAG)
 
+## 🧠 Core Intelligence: Resilient Hybrid Agent (v6.2)
+**"The Council of Three"** - A sophisticated decision-making system powered by three distinct personas.
+
+### Architecture
+- **3-Tier Strategy**:
+    - **FAST (Local 3B)**: News Sentiment & Reflexes (Cost: $0).
+    - **REASONING (Local 14B)**: Deep Analysis & Logic (Cost: $0).
+    - **THINKING (Cloud)**: Final Judgment & Strategy (High-Value Decisions).
+- **Resilience**:
+    - **Thinking Gate**: Only High-Conviction deals (Hunter Score ≥ 70) reach the Cloud Judge.
+    - **Cloud Fallback**: Automatically fails over to Cloud if Local LLM becomes unresponsive.
+
+### 🎭 Smart Personas: Frame Clash Debate
+Unlike traditional agents, our personas debate based on opposing **Interpretation Frames**, not just opinions.
+- **Minji (The Analyst)**: Views the world through **Risk & Data** (Downside Protection).
+- **Junho (The Strategist)**: Views the world through **Opportunity & Macro** (FOMO/Momentum).
+- **Jennie (The Judge)**: Synthesizes the debate into a final actionable decision.
+
 ### Data
 - **MariaDB** - 영구 저장소
-- **Redis** - 캐시 및 실시간 상태
+- **Redis** - 캐시 및 실시간
 - **FinanceDataReader** - 주가 데이터
 - **Pandas / NumPy** - 데이터 분석
 

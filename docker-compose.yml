@@ -880,6 +880,37 @@ services:
     networks:
       - msa-network
 
+  # ============================================================================
+  # 11. AI/LLM Services
+  # ============================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles: [ "infra" ]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "11434:11434"
+    volumes:
+      - /docker_data/ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - msa-network
+    labels:
+      - app=ollama
+      - stack=my-ultra-jennie
+    healthcheck:
+      test: [ "CMD", "ollama", "list" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 networks:
   msa-network:
     driver: bridge
