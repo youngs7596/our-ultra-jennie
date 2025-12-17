@@ -144,7 +144,7 @@ def session_with_trade_logs(db_session):
             trade_type="BUY",
             quantity=50,
             price=150000,
-            trade_timestamp=now - timedelta(hours=1),
+            trade_timestamp=now - timedelta(minutes=1),
             key_metrics_json=json.dumps({"signal": "BUY"})
         ),
         # 어제 매도

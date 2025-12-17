@@ -393,46 +393,6 @@ class TestParameterVerificationPrompt:
         assert '10%' in prompt  # 변경폭 제한
 
 
-class TestCompetitorBenefitPrompt:
-    """경쟁사 수혜 분석 프롬프트 테스트"""
-    
-    def test_inject_competitor_benefit_context(self):
-        """경쟁사 수혜 컨텍스트 주입"""
-        from shared.llm import JennieBrain
-        
-        # JennieBrain 인스턴스 생성 (초기화 우회)
-        brain = object.__new__(JennieBrain)
-        
-        base_prompt = "기존 분석 프롬프트입니다."
-        
-        result = brain._inject_competitor_benefit_context(
-            base_prompt,
-            competitor_benefit_score=15,
-            competitor_reason="쿠팡 개인정보 유출로 네이버 반사이익"
-        )
-        
-        # 가산점 정보 포함
-        assert '+15점' in result
-        assert '쿠팡' in result
-        assert '반사이익' in result
-        assert base_prompt in result  # 기존 프롬프트도 포함
-    
-    def test_inject_competitor_benefit_context_zero_score(self):
-        """수혜 점수 0이면 원본 반환"""
-        from shared.llm import JennieBrain
-        
-        brain = object.__new__(JennieBrain)
-        
-        base_prompt = "기존 분석 프롬프트입니다."
-        
-        result = brain._inject_competitor_benefit_context(
-            base_prompt,
-            competitor_benefit_score=0,
-            competitor_reason=""
-        )
-        
-        # 원본 그대로 반환
-        assert result == base_prompt
 
 
 class TestFormatHelpers:

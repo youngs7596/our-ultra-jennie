@@ -52,7 +52,7 @@ class TestGeminiLLMProvider:
     @patch('google.generativeai.configure')
     def test_init_success(self, mock_configure, mock_get_secret, mock_safety_settings):
         """초기화 성공"""
-        from shared.llm import GeminiLLMProvider
+        from shared.llm_providers import GeminiLLMProvider
         
         mock_get_secret.return_value = 'fake-gemini-api-key'
         
@@ -69,7 +69,7 @@ class TestGeminiLLMProvider:
     @patch('shared.auth.get_secret')
     def test_init_missing_api_key(self, mock_get_secret, mock_safety_settings):
         """API 키 없으면 RuntimeError"""
-        from shared.llm import GeminiLLMProvider
+        from shared.llm_providers import GeminiLLMProvider
         
         mock_get_secret.return_value = None
         
@@ -88,7 +88,7 @@ class TestGeminiLLMProvider:
     def test_generate_json_success(self, mock_model_class, mock_configure, mock_get_secret, 
                                     mock_safety_settings, sample_response_schema):
         """generate_json 성공"""
-        from shared.llm import GeminiLLMProvider
+        from shared.llm_providers import GeminiLLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         
@@ -116,7 +116,7 @@ class TestGeminiLLMProvider:
     def test_generate_json_fallback(self, mock_model_class, mock_configure, mock_get_secret,
                                      mock_safety_settings, sample_response_schema):
         """첫 번째 모델 실패 시 폴백 모델로 재시도"""
-        from shared.llm import GeminiLLMProvider
+        from shared.llm_providers import GeminiLLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         
@@ -151,7 +151,7 @@ class TestGeminiLLMProvider:
     def test_generate_json_all_fail(self, mock_model_class, mock_configure, mock_get_secret,
                                      mock_safety_settings, sample_response_schema):
         """모든 모델 실패 시 RuntimeError"""
-        from shared.llm import GeminiLLMProvider
+        from shared.llm_providers import GeminiLLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         
@@ -180,7 +180,7 @@ class TestOpenAILLMProvider:
     @patch('shared.auth.get_secret')
     def test_init_success(self, mock_get_secret, mock_safety_settings):
         """초기화 성공"""
-        from shared.llm import OpenAILLMProvider
+        from shared.llm_providers import OpenAILLMProvider
         
         mock_get_secret.return_value = 'fake-openai-api-key'
         
@@ -195,7 +195,7 @@ class TestOpenAILLMProvider:
     
     def test_is_reasoning_model(self, mock_safety_settings):
         """Reasoning 모델 판별"""
-        from shared.llm import OpenAILLMProvider
+        from shared.llm_providers import OpenAILLMProvider
         
         # __init__ 우회
         provider = object.__new__(OpenAILLMProvider)
@@ -209,7 +209,7 @@ class TestOpenAILLMProvider:
     @patch('shared.auth.get_secret')
     def test_generate_json_success(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """generate_json 성공"""
-        from shared.llm import OpenAILLMProvider
+        from shared.llm_providers import OpenAILLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         
@@ -241,7 +241,7 @@ class TestOpenAILLMProvider:
     @patch('shared.auth.get_secret')
     def test_generate_json_reasoning_model_no_temperature(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """Reasoning 모델은 temperature 파라미터 없음"""
-        from shared.llm import OpenAILLMProvider
+        from shared.llm_providers import OpenAILLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         
@@ -321,7 +321,13 @@ class TestClaudeLLMProvider:
     @patch('shared.auth.get_secret')
     def test_generate_json_with_markdown(self, mock_get_secret, mock_safety_settings, sample_response_schema):
         """마크다운 코드블록 제거"""
-        from shared.llm_providers import ClaudeLLMProvider
+        from shared.llm_providers import (
+    BaseLLMProvider,
+    GeminiLLMProvider,
+    OpenAILLMProvider,
+    ClaudeLLMProvider,
+    build_llm_provider
+)
         
         provider = object.__new__(ClaudeLLMProvider)
         provider.safety_settings = mock_safety_settings
@@ -353,7 +359,7 @@ class TestBuildLlmProvider:
     @patch('google.generativeai.configure')
     def test_build_gemini_provider(self, mock_configure, mock_get_secret, mock_safety_settings):
         """Gemini Provider 생성"""
-        from shared.llm import build_llm_provider
+        from shared.llm_providers import build_llm_provider
         
         mock_get_secret.return_value = 'fake-api-key'
         
@@ -397,7 +403,7 @@ class TestProviderProperties:
     @patch('google.generativeai.configure')
     def test_gemini_flash_model_name(self, mock_configure, mock_get_secret, mock_safety_settings, monkeypatch):
         """Gemini flash 모델명 확인"""
-        from shared.llm import GeminiLLMProvider
+        from shared.llm_providers import GeminiLLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         monkeypatch.setenv('LLM_FLASH_MODEL_NAME', 'gemini-custom-flash')
@@ -410,7 +416,7 @@ class TestProviderProperties:
     @patch('google.generativeai.configure')
     def test_gemini_default_model_from_env(self, mock_configure, mock_get_secret, mock_safety_settings, monkeypatch):
         """환경변수에서 기본 모델명 로드"""
-        from shared.llm import GeminiLLMProvider
+        from shared.llm_providers import GeminiLLMProvider
         
         mock_get_secret.return_value = 'fake-api-key'
         monkeypatch.setenv('LLM_MODEL_NAME', 'gemini-custom-pro')
