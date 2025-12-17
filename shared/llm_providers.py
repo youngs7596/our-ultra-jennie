@@ -79,9 +79,10 @@ class OllamaLLMProvider(BaseLLMProvider):
         if is_fast_tier:
             self.timeout = 60  # 1 min for fast tasks
         elif is_thinking_tier:
-            self.timeout = 300 # 5 min for deep thinking
+            self.timeout = 600 # 10 min for deep thinking (Increased from 300s)
         else:
-            self.timeout = 120 # 2 min default (Reasoning)
+            # Reasoning Tier
+            self.timeout = 300 # 5 min default (Increased from 120s for stability)
             
         self.max_retries = 3
 
