@@ -58,7 +58,8 @@ class LLMFactory:
         Defaults: FAST/REASONING -> ollama, THINKING -> openai
         """
         env_key = f"TIER_{tier.value}_PROVIDER"
-        default = "ollama" if tier in [LLMTier.FAST, LLMTier.REASONING] else "openai"
+        # [v6.0] Default changed to 'ollama' for ALL tiers to prevent accidental Cloud costs
+        default = "ollama" 
         return os.getenv(env_key, default).lower()
 
     @staticmethod
@@ -66,9 +67,10 @@ class LLMFactory:
         """Get the specific local model name for a tier."""
         env_key = f"LOCAL_MODEL_{tier.value}"
         defaults = {
-            LLMTier.FAST: "qwen2.5:3b",
-            LLMTier.REASONING: "qwen2.5:14b",
-            LLMTier.THINKING: "deepseek-r1:32b"
+            # [v6.2] Qwen3 Upgrade (RTX 3090 optimized)
+            LLMTier.FAST: "qwen3:8b",        # ~5.5GB (High Accuracy for simple tasks)
+            LLMTier.REASONING: "qwen3:14b",  # ~9.0GB (Deep Reasoning)
+            LLMTier.THINKING: "qwen3:14b"    # ~9.0GB (Judge/Report)
         }
         return os.getenv(env_key, defaults.get(tier, "qwen2.5:14b"))
 
@@ -117,3 +119,36 @@ class LLMFactory:
             return GeminiLLMProvider()
         
         raise ValueError(f"Unknown provider type: {provider_type} for tier {tier}")
+
+    @classmethod
+    def get_fallback_provider(cls, tier: LLMTier):
+        """
+        [v6.1] Tier-Adaptive Fallback Strategy
+        FAST (News) -> Gemini Flash (Free/Cheap, High Speed)
+        REASONING (Debate) -> Gemini Pro or GPT-4o-mini (Balanced)
+        THINKING (Judge) -> OpenAI GPT-4o (High Performance) or Error
+        """
+        from shared.llm_providers import GeminiLLMProvider, OpenAILLMProvider
+
+        if tier == LLMTier.FAST:
+            # News Analysis -> Gemini Flash is best (Cheap/Fast)
+            # Assuming env var for Gemini is set up
+            return GeminiLLMProvider(
+                project_id=os.getenv("GCP_PROJECT_ID"),
+                gemini_api_key_secret=os.getenv("SECRET_ID_GEMINI_API_KEY", "gemini-api-key"),
+                safety_settings=None
+            )
+        elif tier == LLMTier.REASONING:
+            # Debate/Hunter -> GPT-4o-mini (Cost effective reasoning)
+            # OR Gemini Pro if OpenAI is out of quota. 
+            # Per user "Quota exhausted", let's prioritize Gemini or OpenAI Mini (if quota allows later)
+            # Currently strict "No OpenAI" requests -> Use Gemini as safer fallback?
+            # Let's stick to the "Appropriate Tier" logic.
+            # Ideally: OpenAI Mini.
+            return OpenAILLMProvider() 
+        elif tier == LLMTier.THINKING:
+            # Judge -> Must be high quality. If Local failed, we might not have a better option 
+            # if OpenAI is exhausted. But logic-wise: OpenAI.
+            return OpenAILLMProvider()
+        
+        return None

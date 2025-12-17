@@ -140,10 +140,13 @@ class JennieBrain:
             )
             return result
         except Exception as e:
-            logger.warning(f"⚠️ [News] Local LLM failed: {e}. Attempting Cloud Fallback...")
+            logger.warning(f"⚠️ [News] Local LLM failed: {e}. Attempting Cloud Fallback (Tier-Adaptive)...")
             try:
-                # Fallback to THINKING Tier (Cloud)
-                fallback_provider = self._get_provider(LLMTier.THINKING)
+                # [v6.1] Tier-Adaptive Fallback
+                fallback_provider = LLMFactory.get_fallback_provider(LLMTier.FAST)
+                if fallback_provider is None:
+                     raise ValueError("No fallback provider for FAST tier")
+
                 result = fallback_provider.generate_json(
                     prompt,
                     ANALYSIS_RESPONSE_SCHEMA,
@@ -188,11 +191,11 @@ class JennieBrain:
             return str(result)
 
         except Exception as e:
-            logger.warning(f"⚠️ [Debate] Local LLM failed: {e}. Attempting Cloud Fallback...")
+            logger.warning(f"⚠️ [Debate] Local LLM failed: {e}. Attempting Cloud Fallback (Tier-Adaptive)...")
             try:
-                fallback_provider = self._get_provider(LLMTier.THINKING)
+                fallback_provider = LLMFactory.get_fallback_provider(LLMTier.REASONING)
                 if fallback_provider is None:
-                    raise ValueError("Fallback provider (Thinking Tier) not available")
+                    raise ValueError("No fallback provider for REASONING tier")
 
                 logger.info(f"--- [JennieBrain/Debate] Cloud Fallback via {fallback_provider.name} ---")
                 chat_history = [{"role": "user", "content": prompt}]
@@ -262,11 +265,11 @@ class JennieBrain:
             logger.info(f"   ✅ v5 Hunter 완료: {stock_info.get('name')} - {result.get('score')}점")
             return result
         except Exception as e:
-            logger.warning(f"⚠️ [v5-Hunter] Local LLM failed: {e}. Attempting Cloud Fallback...")
+            logger.warning(f"⚠️ [v5-Hunter] Local LLM failed: {e}. Attempting Cloud Fallback (Tier-Adaptive)...")
             try:
-                fallback_provider = self._get_provider(LLMTier.THINKING)
+                fallback_provider = LLMFactory.get_fallback_provider(LLMTier.REASONING)
                 if fallback_provider is None:
-                    raise ValueError("Fallback provider (Thinking Tier) not available")
+                    raise ValueError("No fallback provider for REASONING tier")
 
                 logger.info(f"--- [JennieBrain/v5-Hunter] Cloud Fallback via {fallback_provider.name} ---")
                 result = fallback_provider.generate_json(
