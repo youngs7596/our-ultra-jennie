@@ -407,6 +407,7 @@ docker compose run --rm scout-job python scripts/init_competitor_data.py
 ---
 
 ## 📅 진행 상황 (Change Log)
+- **[2025-12-17] Cycle 5: Stabilization**: Ollama (Qwen3) JSON 파싱 호환성 개선 및 Unit Test 100% (391개) 통과.
 - **[2025-12-16] Cycle 4: Market Flow Strategy**: 외국인/기관 수급 분석 (`get_investor_trend`) 및 Scout 파이프라인 연동.
 - **[2025-12-16] Cycle 3: Logic Refinement**: 키워드 기반 동적 토론자(Context-Aware Persona) 구현.
 - **[2025-12-14] Scout V6 업데이트**: Kill Switch(리스크 필터), Foreign Dip Buying(외국인 수급 눌림목 매수), Real Mode 배포 완료.
