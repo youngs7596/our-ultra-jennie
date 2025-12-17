@@ -641,6 +641,7 @@ def build_hunter_prompt_v5(stock_info: dict, quant_context: str = None) -> str:
 - F(<40): 회피 - 치명적 리스크
 
 JSON 응답: {{"score": 숫자, "grade": "등급", "reason": "판단 이유"}}
+**반드시 JSON 형식만 출력하세요. 마크다운 포맷팅(```json)을 포함하지 마세요.**
 
 ⚠️ **중요**: 위 정량 분석의 조건부 승률과 표본 수는 역사적 데이터입니다. 
 표본 수가 30개 이상이면 신뢰할 수 있고, 15개 미만이면 보수적으로 판단하세요."""

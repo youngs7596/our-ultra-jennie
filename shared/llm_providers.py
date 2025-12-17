@@ -147,7 +147,7 @@ class OllamaLLMProvider(BaseLLMProvider):
         payload = {
             "model": target_model,
             "prompt": prompt,
-            "format": "json",
+            # "format": "json",  <-- [Fix] Removed because Qwen3 returns empty JSON with this
             "options": {
                 "temperature": temperature,
                 "num_ctx": 8192 # Context Window
@@ -163,16 +163,54 @@ class OllamaLLMProvider(BaseLLMProvider):
             
             # [Defensive] JSON Parsing with basic cleanup
             try:
-                return json.loads(content)
+                parsed = json.loads(content)
             except json.JSONDecodeError:
                 # Try to find JSON block if mixed with text
                 if "```json" in content:
                     content = content.split("```json")[1].split("```")[0]
+                elif "```" in content:
+                     content = content.split("```")[1].split("```")[0]
                 elif "{" in content:
                     start = content.find("{")
                     end = content.rfind("}") + 1
                     content = content[start:end]
-                return json.loads(content)
+                parsed = json.loads(content)
+            
+            # [Defensive] Case-insensitive Key Normalization
+            # Qwen3 sometimes returns 'Score' instead of 'score'
+            if response_schema:
+                 normalized = {}
+                 required_keys = response_schema.get("required", [])
+                 # Create a mapping of lowercase key -> original key in parsed result
+                 parsed_keys_lower = {k.lower(): k for k in parsed.keys()}
+                 
+                 for req_key in required_keys:
+                     req_key_lower = req_key.lower()
+                     if req_key in parsed:
+                         normalized[req_key] = parsed[req_key]
+                     elif req_key_lower in parsed_keys_lower:
+                         # Found it with different case
+                         original_key = parsed_keys_lower[req_key_lower]
+                         normalized[req_key] = parsed[original_key]
+                         logger.warning(f"⚠️ [Ollama] Normalized key case: {original_key} -> {req_key}")
+                     else:
+                         # Key missing, keep what we have (or let it fail later)
+                         pass
+                 
+                 # Copy over other keys that weren't required (optional)
+                 for k, v in parsed.items():
+                     if k not in normalized and k.lower() not in parsed_keys_lower:
+                         normalized[k] = v
+                         
+                 # If we normalized anything, use it. 
+                 # But checks if we actually found required keys. 
+                 # If 'normalized' has the required keys, return it.
+                 # Otherwise return 'parsed' and let the caller handle missing keys 
+                 # (or maybe 'parsed' is just better).
+                 # Let's simple return 'normalized' merging with 'parsed' for safety.
+                 parsed.update(normalized) # Ensure required keys are present with correct casing
+            
+            return parsed
                 
         except Exception as e:
             logger.error(f"❌ [Ollama] generate_json failed: {e}")
@@ -206,7 +244,7 @@ class OllamaLLMProvider(BaseLLMProvider):
         }
         
         if response_schema:
-            payload["format"] = "json"
+            pass # payload["format"] = "json" <-- [Fix] Removed
 
         try:
             result = self._call_ollama_api("/api/chat", payload)
@@ -219,9 +257,7 @@ class OllamaLLMProvider(BaseLLMProvider):
                 try:
                     return json.loads(content)
                 except json.JSONDecodeError:
-                     if "```json" in content:
-                        content = content.split("```json")[1].split("```")[0]
-                     elif "{" in content:
+                     if "{" in content:
                         start = content.find("{")
                         end = content.rfind("}") + 1
                         content = content[start:end]
