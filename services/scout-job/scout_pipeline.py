@@ -128,7 +128,7 @@ def process_quant_scoring_task(stock_info, quant_scorer, db_conn, kospi_prices_d
         )
 
 
-def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cache=None, news_cache=None):
+def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cache=None, news_cache=None, archivist=None):
     """
     [v1.0] Phase 1 Hunter - 정량 컨텍스트 포함 LLM 분석
     [v1.0] 경쟁사 수혜 점수 반영 추가
@@ -192,6 +192,22 @@ def process_phase1_hunter_v5_task(stock_info, brain, quant_result, snapshot_cach
         logger.info(f"   ✅ [v5 Hunter 통과] {info['name']}({code}) - Quant:{quant_result.total_score:.0f} → Hunter:{hunter_score}점")
     else:
         logger.debug(f"   ❌ [v5 Hunter 탈락] {info['name']}({code}) - Quant:{quant_result.total_score:.0f} → Hunter:{hunter_score}점")
+        
+        # [Priority 2] Shadow Radar Logging
+        if archivist and hunter_score > 0: # 0점은 에러/데이터부족일 수 있으므로 제외할지 고민 -> 일단 0점도 기록하되 reason 확인
+            try:
+                shadow_data = {
+                    'stock_code': code,
+                    'stock_name': info['name'],
+                    'rejection_stage': 'HUNTER',
+                    'rejection_reason': hunter_result.get('reason', 'Hunter Score 미달'),
+                    'hunter_score_at_time': hunter_score,
+                    'trigger_type': 'FILTER_REJECT',
+                    'trigger_value': float(hunter_score)
+                }
+                archivist.log_shadow_radar(shadow_data)
+            except Exception as e:
+                logger.warning(f"Failed to log shadow radar for {code}: {e}")
     
     return {
         'code': code,
@@ -270,6 +286,22 @@ def process_phase23_judge_v5_task(phase1_result, brain, archivist=None, market_r
         logger.info(f"   ✅ [v5 Judge 승인] {info['name']}({code}) - Hybrid:{hybrid_score:.1f}점 ({final_grade})")
     else:
         logger.info(f"   ❌ [v5 Judge 거절] {info['name']}({code}) - Hybrid:{hybrid_score:.1f}점 ({final_grade})")
+        
+        # [Priority 2] Shadow Radar Logging (Judge Reject)
+        if archivist:
+            try:
+                shadow_data = {
+                    'stock_code': code,
+                    'stock_name': info['name'],
+                    'rejection_stage': 'JUDGE',
+                    'rejection_reason': f"Hybrid Score 미달 ({hybrid_score:.1f}) - {reason}",
+                    'hunter_score_at_time': hunter_score,
+                    'trigger_type': 'JUDGE_REJECT',
+                    'trigger_value': float(hybrid_score)
+                }
+                archivist.log_shadow_radar(shadow_data)
+            except Exception as e:
+                logger.warning(f"Failed to log shadow radar for {code}: {e}")
     
     metadata = {
         'llm_grade': final_grade,
@@ -336,7 +368,7 @@ def process_phase23_judge_v5_task(phase1_result, brain, archivist=None, market_r
     }
 
 
-def process_phase1_hunter_task(stock_info, brain, snapshot_cache=None, news_cache=None):
+def process_phase1_hunter_task(stock_info, brain, snapshot_cache=None, news_cache=None, archivist=None):
     """
     [v4.2] Phase 1 Hunter만 실행하는 태스크 (병렬 처리용)
     
@@ -400,6 +432,22 @@ def process_phase1_hunter_task(stock_info, brain, snapshot_cache=None, news_cach
         logger.info(f"   ✅ [Phase 1 통과] {info['name']}({code}) - Hunter: {hunter_score}점")
     else:
         logger.debug(f"   ❌ [Phase 1 탈락] {info['name']}({code}) - Hunter: {hunter_score}점")
+
+        # [Priority 2] Shadow Radar Logging
+        if archivist:
+            try:
+                shadow_data = {
+                    'stock_code': code,
+                    'stock_name': info['name'],
+                    'rejection_stage': 'HUNTER_V4',
+                    'rejection_reason': hunter_result.get('reason', 'Hunter Score 미달'),
+                    'hunter_score_at_time': hunter_score,
+                    'trigger_type': 'FILTER_REJECT',
+                    'trigger_value': float(hunter_score)
+                }
+                archivist.log_shadow_radar(shadow_data)
+            except Exception as e:
+                logger.warning(f"Failed to log shadow radar for {code}: {e}")
     
     return {
         'code': code,
@@ -413,7 +461,7 @@ def process_phase1_hunter_task(stock_info, brain, snapshot_cache=None, news_cach
     }
 
 
-def process_phase23_debate_judge_task(phase1_result, brain):
+def process_phase23_debate_judge_task(phase1_result, brain, archivist=None):
     """
     [v3.8] Phase 2-3 (Debate + Judge) 실행하는 태스크 (Phase 1 통과 종목만)
     GPT-5-mini로 심층 분석
@@ -439,6 +487,22 @@ def process_phase23_debate_judge_task(phase1_result, brain):
         logger.info(f"   ✅ [Judge 승인] {info['name']}({code}) - 최종: {score}점 ({grade})")
     else:
         logger.info(f"   ❌ [Judge 거절] {info['name']}({code}) - 최종: {score}점 ({grade})")
+        
+        # [Priority 2] Shadow Radar Logging
+        if archivist:
+            try:
+                shadow_data = {
+                    'stock_code': code,
+                    'stock_name': info['name'],
+                    'rejection_stage': 'JUDGE_V4',
+                    'rejection_reason': reason,
+                    'hunter_score_at_time': hunter_score,
+                    'trigger_type': 'JUDGE_REJECT',
+                    'trigger_value': float(score)
+                }
+                archivist.log_shadow_radar(shadow_data)
+            except Exception as e:
+                logger.warning(f"Failed to log shadow radar for {code}: {e}")
     
     metadata = {
         'llm_grade': grade,

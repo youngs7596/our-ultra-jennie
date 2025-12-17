@@ -427,6 +427,7 @@ docker compose run --rm scout-job python scripts/init_competitor_data.py
 - **[2025-12 WA] Database 리팩토링**: `shared/database` 패키지로 도메인별 분리 완료 (`market.py`, `trading.py`, `core.py` 등).
 - **[2025-12-08] 수동 매매 명령어**: 텔레그램 `/buy`, `/sell` 등 지원.
 - **[2025-12-17] Self-Healing Pipeline**: `FailureReporter`, `IncidentSchema`, `Antigravity Bridge` 구현.
+- **[2025-12-17] Long-Term Data Strategy**: Shadow Radar(필터링 탈락 기록) 및 Intraday Data(1분봉 수집) 구현 완료.
 
 ---
 
@@ -598,6 +599,7 @@ Responsibility for the robust recording of all critical data for future AI learn
 - **Decision Ledger**: Records the full context of LLM decisions (Debate, Logic, Outcome).
 - **Shadow Radar**: Logs missed opportunities (candidates rejected by filters) for calibration.
 - **Market Flow**: Daily snapshot of Foreigner/Institution/Program buy flow.
+- **Intraday Data**: targeted 1-minute OHLCV collection for active/rejected candidates.
 
 ```python
 from shared.archivist import Archivist

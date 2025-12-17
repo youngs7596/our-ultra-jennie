@@ -670,6 +670,9 @@ def main():
                     
                     # Phase 1: Hunter (통계 컨텍스트 포함)
                     phase1_results = []
+                    # [v6.0] Archivist 초기화 (Phase 1/2 공용)
+                    archivist = Archivist(session_scope)
+
                     with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
                         future_to_code = {}
                         for code in filtered_codes:
@@ -678,7 +681,7 @@ def main():
                             payload = {'code': code, 'info': info}
                             future = executor.submit(
                                 process_phase1_hunter_v5_task, 
-                                payload, brain, quant_result, snapshot_cache, news_cache
+                                payload, brain, quant_result, snapshot_cache, news_cache, archivist
                             )
                             future_to_code[future] = code
                         
@@ -713,8 +716,7 @@ def main():
                         with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
                             future_to_code = {}
                             
-                            # [v6.0] Archivist 초기화
-                            archivist = Archivist(session_scope)
+                            # [v6.0] Archivist 사용 (위에서 초기화됨)
 
                             for p1_result in phase1_passed:
                                 future = executor.submit(
