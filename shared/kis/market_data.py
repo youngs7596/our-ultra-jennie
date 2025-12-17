@@ -206,40 +206,39 @@ class MarketData:
         period_code = period_code_map.get(minute_interval, "5")
         
         # 여러 엔드포인트와 TR_ID 조합 시도
+        # [Fix] FHKST03010200 (주식당일분봉조회) expects TIME in FID_INPUT_HOUR_1, not Date.
+        # Use current time if target is today, otherwise '153000' (though API assumes Today data only).
+        current_dt = datetime.now()
+        current_date_str = current_dt.strftime("%Y%m%d")
+        
+        # If querying for today, use current time to get latest data. 
+        # If querying past (which this API doesn't support well), fallback to 153000 (market close).
+        time_str = current_dt.strftime("%H%M%S") if target_date_yyyymmdd == current_date_str else "153000"
+        
         endpoints_to_try = [
+            {
+                # [Success verified] Correct endpoint for Intraday Minute Data
+                "url": f"{self.client.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+                "tr_id": "FHKST03010200",
+                "params": {
+                    "FID_ETC_CLS_CODE": "",
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD": stock_code,
+                    "FID_INPUT_HOUR_1": time_str, # HHMMSS
+                    "FID_PW_DATA_INCU_YN": "N"
+                }
+            },
+            # Backup attempts with legacy parameters (likely to fail but kept for safety if API changes)
             {
                 "url": f"{self.client.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
                 "tr_id": "FHKST03010200",
                 "params": {
                     "FID_COND_MRKT_DIV_CODE": "J",
                     "FID_INPUT_ISCD": stock_code,
-                    "FID_INPUT_HOUR_1": target_date_yyyymmdd,
+                    "FID_INPUT_HOUR_1": target_date_yyyymmdd, # Legacy improper usage
                     "FID_INPUT_HOUR_2": target_date_yyyymmdd,
                     "FID_PRC_DIV_CODE": period_code,
                     "FID_ORG_ADJ_PRC": "1"
-                }
-            },
-            {
-                "url": f"{self.client.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-chartprice",
-                "tr_id": "FHKST03010200",
-                "params": {
-                    "FID_COND_MRKT_DIV_CODE": "J",
-                    "FID_INPUT_ISCD": stock_code,
-                    "FID_INPUT_DATE_1": target_date_yyyymmdd,
-                    "FID_INPUT_DATE_2": target_date_yyyymmdd,
-                    "FID_PERIOD_DIV_CODE": period_code,
-                    "FID_ORG_ADJ_PRC": "1"
-                }
-            },
-            {
-                "url": f"{self.client.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-condchartprice",
-                "tr_id": "FHKST03010200",
-                "params": {
-                    "FID_COND_MRKT_DIV_CODE": "J",
-                    "FID_INPUT_ISCD": stock_code,
-                    "FID_INPUT_DATE_1": target_date_yyyymmdd,
-                    "FID_INPUT_DATE_2": target_date_yyyymmdd,
-                    "FID_PERIOD_DIV_CODE": period_code
                 }
             }
         ]

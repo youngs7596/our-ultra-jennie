@@ -105,12 +105,15 @@ def collect_intraday(kis_api, session: Session, stock_codes: list):
             
             daily_prices = [] 
             # Trying to use the high level method if available
-            if hasattr(kis_api, 'get_market_data'):
-                # It's KISClient
-                ticks = kis_api.get_market_data().get_stock_minute_prices(code, today_str, minute_interval=1)
+            # Check for market_data attribute (Standard KISClient)
+            if hasattr(kis_api, 'market_data'):
+                ticks = kis_api.market_data.get_stock_minute_prices(code, today_str, minute_interval=1)
+            # Check for direct method (Gateway or Mixin)
             elif hasattr(kis_api, 'get_stock_minute_prices'):
-                 # It's MarketData mixin or Gateway
                 ticks = kis_api.get_stock_minute_prices(code, today_str, minute_interval=1)
+            # Fallback for old getter pattern if exists
+            elif hasattr(kis_api, 'get_market_data'):
+                ticks = kis_api.get_market_data().get_stock_minute_prices(code, today_str, minute_interval=1)
             else:
                 logger.error("KIS API client does not support get_stock_minute_prices")
                 break
@@ -169,7 +172,8 @@ def main():
     ensure_engine_initialized()
     
     trading_mode = os.getenv("TRADING_MODE", "REAL")
-    use_gateway = os.getenv("USE_KIS_GATEWAY", "true").lower() == "true"
+    # [v6.0] Force Direct Client for Intraday (Gateway implementation pending for minute prices)
+    use_gateway = False # os.getenv("USE_KIS_GATEWAY", "true").lower() == "true"
     
     logger.info(f"Trading Mode: {trading_mode}, Gateway: {use_gateway}")
 
@@ -178,13 +182,25 @@ def main():
         if use_gateway:
             kis_api = KISGatewayClient()
         else:
+            # Fallback to standard secret IDs if env vars are missing
+            # REAL -> kis-r-..., MOCK -> kis-v-...
+            prefix = 'r' if trading_mode == 'REAL' else 'v'
+            
+            app_key_id = os.getenv(f"{trading_mode}_SECRET_ID_APP_KEY", f"kis-{prefix}-app-key")
+            app_secret_id = os.getenv(f"{trading_mode}_SECRET_ID_APP_SECRET", f"kis-{prefix}-app-secret")
+            account_prefix_id = os.getenv(f"{trading_mode}_SECRET_ID_ACCOUNT_PREFIX", f"kis-{prefix}-account-no")
+            
+            # KIS Standard URLs
+            default_base_url = "https://openapi.koreainvestment.com:9443" if trading_mode == 'REAL' else "https://openapivts.koreainvestment.com:29443"
+            base_url = os.getenv(f"KIS_BASE_URL_{trading_mode}", default_base_url)
+
             kis_api = KIS_API(
-                app_key=auth.get_secret(os.getenv(f"{trading_mode}_SECRET_ID_APP_KEY")),
-                app_secret=auth.get_secret(os.getenv(f"{trading_mode}_SECRET_ID_APP_SECRET")),
-                base_url=os.getenv(f"KIS_BASE_URL_{trading_mode}"),
-                account_prefix=auth.get_secret(os.getenv(f"{trading_mode}_SECRET_ID_ACCOUNT_PREFIX")),
-                account_suffix=os.getenv("KIS_ACCOUNT_SUFFIX"),
-                token_file_path="/app/tokens/kis_token_scout.json",
+                app_key=auth.get_secret(app_key_id),
+                app_secret=auth.get_secret(app_secret_id),
+                base_url=base_url,
+                account_prefix=auth.get_secret(account_prefix_id),
+                account_suffix=os.getenv("KIS_ACCOUNT_SUFFIX", "01"),
+                token_file_path=os.path.join(PROJECT_ROOT, "tokens", "kis_token_scout.json"),
                 trading_mode=trading_mode
             )
             if not kis_api.authenticate():
