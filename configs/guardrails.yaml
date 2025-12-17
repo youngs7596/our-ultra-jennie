@@ -1,0 +1,251 @@
+version: "1.0"
+timezone: "Asia/Seoul"
+
+# 배포 단위(릴리즈) 식별자
+release_identity:
+  required_tags: ["release_id", "commit_hash", "config_hash"]
+  last_known_good_alias: "LKG"
+
+controls:
+  feature_flags:
+    enabled: true
+    kill_list:
+      - "trading.enable_new_orders"
+      - "trading.enable_strategy_signals"
+      - "trading.enable_auto_position_resize"
+
+  freeze_new_orders:
+    enabled: true
+    default_behavior: "freeze" 
+    unfreeze_policy:
+      mode: "human_or_stabilize"
+      stabilize_after_seconds: 600
+
+  rollback:
+    enabled: true
+    method_priority: ["feature_flag_off", "rollback_to_LKG"]
+    rollback_target: "LKG"
+
+  kill_switch:
+    enabled: true
+    action: "stop_trading_process"
+
+guard_window:
+  enabled: true
+  total_minutes: 60
+
+windows:
+  - name: "W0_5M"
+    start_minute: 0
+    end_minute: 5
+    purpose: "생존성/연결성"
+  - name: "W5_15M"
+    start_minute: 5
+    end_minute: 15
+    purpose: "주문 품질/리스크"
+  - name: "W15_60M"
+    start_minute: 15
+    end_minute: 60
+    purpose: "행동 드리프트/성능 감시"
+
+metrics:
+  liveness:
+    container_restarts:
+      type: "counter"
+      eval_window_seconds: 300
+    healthcheck_fail_duration_seconds:
+      type: "gauge"
+      eval_window_seconds: 300
+
+  errors:
+    exception_rate_per_min:
+      type: "rate"
+      eval_window_seconds: 60
+    same_error_family_count:
+      type: "counter"
+      eval_window_seconds: 300
+
+  connectivity:
+    broker_connectivity_ok:
+      type: "boolean"
+      eval_window_seconds: 60
+    api_timeout_rate:
+      type: "rate"
+      eval_window_seconds: 60
+
+  order_quality:
+    order_reject_rate:
+      type: "rate"
+      eval_window_seconds: 60
+    order_send_fail_rate:
+      type: "rate"
+      eval_window_seconds: 60
+    order_latency_p95_ms:
+      type: "percentile"
+      percentile: 95
+      eval_window_seconds: 180
+
+  execution_quality:
+    slippage_avg_bps:
+      type: "gauge"
+      eval_window_seconds: 300
+
+  risk:
+    risk_limit_violation_events:
+      type: "counter"
+      eval_window_seconds: 300
+    exposure_limit_violation_events:
+      type: "counter"
+      eval_window_seconds: 300
+
+  behavior:
+    orders_per_min:
+      type: "rate"
+      eval_window_seconds: 300
+    cancel_rate:
+      type: "rate"
+      eval_window_seconds: 300
+    avg_holding_time_seconds:
+      type: "gauge"
+      eval_window_seconds: 600
+
+baselines:
+  default:
+    predeploy_lookback_minutes: 60
+    fallback_lookback_days: 7
+
+rules:
+  # 0–5분: 즉시 롤백/중단
+  - id: "R001_RESTART_STORM"
+    window: "W0_5M"
+    severity: "CRITICAL"
+    when:
+      all:
+        - metric: "liveness.container_restarts"
+          op: ">="
+          value: 2
+    actions:
+      - type: "freeze_new_orders"
+      - type: "feature_flag_off"
+      - type: "rollback_to_LKG"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Restart storm detected. Rolled back to LKG."
+
+  - id: "R002_HEALTHCHECK_FAIL"
+    window: "W0_5M"
+    severity: "CRITICAL"
+    when:
+      all:
+        - metric: "liveness.healthcheck_fail_duration_seconds"
+          op: ">="
+          value: 60
+    actions:
+      - type: "freeze_new_orders"
+      - type: "feature_flag_off"
+      - type: "rollback_to_LKG"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Healthcheck failing >=60s. Rolled back to LKG."
+
+  - id: "R003_BROKER_DOWN"
+    window: "W0_5M"
+    severity: "CRITICAL"
+    when:
+      all:
+        - metric: "connectivity.broker_connectivity_ok"
+          op: "=="
+          value: false
+    actions:
+      - type: "freeze_new_orders"
+      - type: "kill_switch"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Broker connectivity down. Trading stopped via kill switch."
+
+  - id: "R004_EXCEPTION_SPIKE"
+    window: "W0_5M"
+    severity: "HIGH"
+    when:
+      any:
+        - metric: "errors.same_error_family_count"
+          op: ">="
+          value: 3
+        - metric: "errors.exception_rate_per_min"
+          op: ">="
+          value: 10
+    actions:
+      - type: "freeze_new_orders"
+      - type: "feature_flag_off"
+      - type: "rollback_to_LKG"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Exception spike detected. Rolled back to LKG."
+
+  # 5–15분: 주문 품질/리스크
+  - id: "R101_RISK_LIMIT_VIOLATION"
+    window: "W5_15M"
+    severity: "CRITICAL"
+    when:
+      any:
+        - metric: "risk.risk_limit_violation_events"
+          op: ">="
+          value: 1
+        - metric: "risk.exposure_limit_violation_events"
+          op: ">="
+          value: 1
+    actions:
+      - type: "freeze_new_orders"
+      - type: "rollback_to_LKG"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Risk/exposure limit violation. Frozen & rolled back to LKG."
+
+  - id: "R102_ORDER_REJECT_SURGE"
+    window: "W5_15M"
+    severity: "HIGH"
+    when:
+      any:
+        - metric: "order_quality.order_reject_rate"
+          op: ">="
+          value: 0.02
+    actions:
+      - type: "freeze_new_orders"
+      - type: "rollback_to_LKG"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Order reject surge. Frozen & rolled back to LKG."
+
+  - id: "R103_LATENCY_BLOWUP"
+    window: "W5_15M"
+    severity: "HIGH"
+    when:
+      any:
+        - metric: "order_quality.order_latency_p95_ms"
+          op: ">="
+          value: 2000
+    actions:
+      - type: "freeze_new_orders"
+      - type: "rollback_to_LKG"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Latency blowup detected. Frozen & rolled back to LKG."
+
+  - id: "R104_SEND_FAIL_OR_TIMEOUT"
+    window: "W5_15M"
+    severity: "HIGH"
+    when:
+      any:
+        - metric: "order_quality.order_send_fail_rate"
+          op: ">="
+          value: 0.05
+        - metric: "connectivity.api_timeout_rate"
+          op: ">="
+          value: 0.05
+    actions:
+      - type: "freeze_new_orders"
+      - type: "feature_flag_off"
+      - type: "rollback_to_LKG"
+      - type: "notify_human"
+        channel: "incident"
+        message: "Order send fail/timeout rate high. Frozen & rolled back to LKG."

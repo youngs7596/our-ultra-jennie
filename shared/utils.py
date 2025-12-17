@@ -17,6 +17,14 @@ class RetryStrategy(Enum):
     FIXED_INTERVAL = "fixed_interval"  # 고정 간격
     IMMEDIATE = "immediate"  # 즉시 재시도
 
+# [NEW] FailureReporter 지연 임포트 (Circular Dependency 방지)
+def _get_reporter():
+    try:
+        from shared.failure_reporter import FailureReporter
+        return FailureReporter()
+    except ImportError:
+        return None
+
 
 class RetryableError(Exception):
     """재시도 가능한 에러 (일시적 오류)"""
@@ -69,11 +77,23 @@ def retry_with_backoff(
                     # 재시도 불가능한 에러인지 확인
                     if isinstance(e, NonRetryableError):
                         logger.error(f"❌ [{func.__name__}] 재시도 불가능한 에러: {e}")
+                        
+                        # [NEW] Incident Report 생성
+                        reporter = _get_reporter()
+                        if reporter:
+                            reporter.capture_exception(e, custom_msg=f"[{func.__name__}] Non-Retryable Error")
+                            
                         raise
                     
                     # 마지막 시도인 경우 예외 발생
                     if attempt >= max_attempts:
                         logger.error(f"❌ [{func.__name__}] 최대 시도 횟수({max_attempts}) 초과. 마지막 에러: {e}")
+                        
+                        # [NEW] Incident Report 생성 (최종 실패)
+                        reporter = _get_reporter()
+                        if reporter:
+                            reporter.capture_exception(e, custom_msg=f"[{func.__name__}] Max Retries ({max_attempts}) Exceeded")
+                            
                         raise
                     
                     # 재시도 콜백 호출
@@ -109,6 +129,10 @@ def retry_with_backoff(
             
             # 모든 시도 실패
             if last_exception:
+                # [NEW] Incident Report 생성 (루프 종료 후 실패)
+                reporter = _get_reporter()
+                if reporter:
+                    reporter.capture_exception(last_exception, custom_msg=f"[{func.__name__}] All retries failed")
                 raise last_exception
             
         return wrapper
@@ -293,6 +317,12 @@ def handle_errors(
             except Exception as e:
                 if log_error:
                     logger.error(f"❌ [{func.__name__}] 에러 발생: {e}", exc_info=True)
+                    
+                    # [NEW] Incident Report 생성
+                    reporter = _get_reporter()
+                    if reporter:
+                        reporter.capture_exception(e, custom_msg=f"[{func.__name__}] Exception Caught")
+                        
                 if reraise:
                     raise
                 return default_return
